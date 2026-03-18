@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Optimized V8</title>
+    <title>Diệp Thảo PMU - Reminder Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -17,7 +17,7 @@
         .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.6); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .animate-up { animation: fadeInUp 0.4s ease-out; }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         input, select, textarea { background: rgba(255,255,255,0.05) !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px; }
         .gate-title { letter-spacing: 0.5em; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
     </style>
@@ -60,7 +60,6 @@
             const [searchTerm, setSearchTerm] = useState('');
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [editingCustomer, setEditingCustomer] = useState(null);
-            const [viewingImage, setViewingImage] = useState(null);
             const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
             const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || ADMIN_EMAIL);
 
@@ -73,8 +72,6 @@
                 return () => unsubCust();
             }, [isUnlocked]);
 
-            const triggerVibrate = () => { if (navigator.vibrate) navigator.vibrate(50); };
-
             const checkPermission = () => {
                 const currentEmail = (myEmail || "").trim().toLowerCase();
                 if (currentEmail === ADMIN_EMAIL.toLowerCase()) return true;
@@ -84,80 +81,47 @@
 
             const [formData, setFormData] = useState({
                 name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0],
-                price: '', note: '', image: ''
+                price: '', note: ''
             });
-
-            // HÀM XỬ LÝ ẢNH CHỐNG VĂNG (CỰC NHẸ)
-            const handleImageChange = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        // Chỉ lấy kích thước tối thiểu để nhận diện (300px)
-                        const MAX_SIZE = 300; 
-                        let width = img.width;
-                        let height = img.height;
-
-                        if (width > height) {
-                            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                        } else {
-                            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                        }
-
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        
-                        // Xuất ảnh chất lượng thấp để tránh nặng bộ nhớ
-                        const compressed = canvas.toDataURL('image/jpeg', 0.5); 
-                        setFormData(prev => ({...prev, image: compressed}));
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            };
 
             const handleSave = async (e) => {
                 e.preventDefault();
-                if (!checkPermission()) { alert("Chưa có quyền!"); return; }
-                
-                triggerVibrate();
+                if (!checkPermission()) { alert("Email chưa được cấp quyền!"); return; }
                 const data = { ...formData, price: Number(formData.price) || 0 };
-                const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
-
                 try {
                     if (editingCustomer) {
                         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), data);
                     } else {
-                        await addDoc(custRef, data);
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'customers'), data);
                     }
                     setIsModalOpen(false);
                     setEditingCustomer(null);
-                    setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '', image: '' });
-                } catch (err) { alert("Lỗi lưu dữ liệu!"); }
+                    setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '' });
+                } catch (err) { alert("Lỗi kết nối!"); }
             };
 
             const handleDelete = async (id, name) => {
                 if (prompt("Nhập mã 5252 để xoá:") === ADMIN_PASS) {
                     if (confirm(`Xoá hồ sơ: ${name}?`)) {
                         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
-                        triggerVibrate();
                     }
                 }
             };
 
-            const handleUnlock = (e) => {
-                if (e.target.value === WEB_LOCK) {
-                    setIsUnlocked(true);
-                    sessionStorage.setItem('webUnlocked', 'true');
-                    triggerVibrate();
-                }
-            };
+            // TÍNH TOÁN NHẮC LỊCH
+            const reminders = useMemo(() => {
+                const today = new Date();
+                const getDiff = (dateStr) => Math.floor((today - new Date(dateStr)) / (1000 * 60 * 60 * 24));
+                
+                return customers.filter(c => {
+                    const diff = getDiff(c.date);
+                    const s = c.service.toLowerCase();
+                    if ((s.includes("mày") || s.includes("hút")) && diff >= 30) return true;
+                    if (s.includes("môi") && diff >= 60) return true;
+                    if (s.includes("laser") && diff >= 15) return true;
+                    return false;
+                });
+            }, [customers]);
 
             const revenue = useMemo(() => {
                 const now = new Date();
@@ -172,7 +136,7 @@
                     <h1 className="text-3xl font-black text-white gate-title mb-12 animate-up uppercase tracking-[0.4em]">DIEPTHAO PMU</h1>
                     <input type="password" autoFocus placeholder="MẬT MÃ..." 
                         className="w-full max-w-xs p-5 text-center tracking-[1em] font-bold text-lg outline-none"
-                        onChange={handleUnlock} />
+                        onChange={(e) => {if(e.target.value===WEB_LOCK){setIsUnlocked(true);sessionStorage.setItem('webUnlocked','true');}}} />
                 </div>
             );
 
@@ -198,85 +162,88 @@
                                 <i data-lucide="search" size="14" className="opacity-20 mr-3"></i>
                                 <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold uppercase tracking-widest" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                                    <div key={c.id} className="bg-card rounded-[2.2rem] p-5 border border-white/5 shadow-2xl flex items-center gap-5">
-                                        <div className="w-20 h-24 bg-black rounded-2xl overflow-hidden border border-white/5 shrink-0" onClick={() => c.image && setViewingImage(c.image)}>
-                                            {c.image ? <img src={c.image} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-[7px] opacity-10 font-black">NO IMG</div>}
-                                        </div>
+                                    <div key={c.id} className="bg-card rounded-3xl p-5 border border-white/5 flex justify-between items-center shadow-lg">
                                         <div className="flex-1 min-w-0">
                                             <h3 className="text-[13px] font-black uppercase text-white/90 truncate">{c.name}</h3>
-                                            <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 italic tracking-wider truncate">{c.service}</p>
-                                            <div className="flex gap-3 mt-4">
-                                                <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="text-[9px] font-bold opacity-30 hover:opacity-100 uppercase tracking-widest">Sửa</button>
-                                                <button onClick={() => handleDelete(c.id, c.name)} className="text-[9px] font-bold text-red-500/40 hover:text-red-500 uppercase tracking-widest">Xoá</button>
-                                            </div>
+                                            <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 tracking-wider italic">{c.service}</p>
                                         </div>
-                                        <div className="text-[8px] opacity-20 font-bold rotate-90 shrink-0">{c.date}</div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-[8px] opacity-20 font-bold uppercase">{c.date}</div>
+                                            <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="text-white/20 hover:text-white"><i data-lucide="edit-3" size="14"></i></button>
+                                            <button onClick={() => handleDelete(c.id, c.name)} className="text-red-900/40 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
 
+                    {activeTab === 'reminder' && (
+                        <div className="animate-up space-y-6">
+                            <h2 className="text-[10px] font-black uppercase text-pink-500 tracking-[0.3em] mb-4">Danh sách nhắc lịch</h2>
+                            {reminders.length === 0 ? <p className="text-[10px] opacity-20 text-center py-10">Không có lịch nhắc hôm nay</p> : 
+                             reminders.map(c => (
+                                <div key={c.id} className="bg-card rounded-3xl p-5 border-l-4 border-pink-500 flex justify-between items-center">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            {c.service.toLowerCase().includes("môi") ? "💋" : (c.service.toLowerCase().includes("laser") ? "✨" : "🖋️")}
+                                            <h3 className="text-[12px] font-black uppercase text-white">{c.name}</h3>
+                                        </div>
+                                        <p className="text-[8px] opacity-50 uppercase mt-1">Làm từ: {c.date}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-[9px] font-black text-pink-500 uppercase">Đến lịch!</span>
+                                    </div>
+                                </div>
+                             ))
+                            }
+                        </div>
+                    )}
+
                     {activeTab === 'settings' && (
                         <div className="animate-up space-y-6">
                             <div className="bg-card p-6 rounded-3xl border border-white/5">
-                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-6 tracking-[0.2em]">QUYỀN TRUY CẬP</h2>
-                                <div className="space-y-5">
-                                    <input type="email" className="w-full p-4 text-[10px] font-bold outline-none" value={myEmail} 
-                                        onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
-                                    <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-28 ${!isAdminMode ? 'opacity-20 pointer-events-none' : ''}`} 
-                                        value={staffList} onChange={(e) => { if(isAdminMode) {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);} }} 
-                                        placeholder="Danh sách nhân viên (Duyệt bởi Admin)..." />
-                                </div>
+                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-6 tracking-[0.2em]">Cấu hình Email</h2>
+                                <input type="email" className="w-full p-4 text-[10px] font-bold outline-none mb-4" value={myEmail} 
+                                    onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
+                                <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-28 ${!isAdminMode ? 'opacity-20 pointer-events-none' : ''}`} 
+                                    value={staffList} onChange={(e) => { if(isAdminMode) {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);} }} 
+                                    placeholder="Danh sách nhân viên..." />
                             </div>
                         </div>
                     )}
 
-                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
-                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="layout-grid" size="20"></i></button>
-                        <button onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
-                        <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="settings" size="20"></i></button>
+                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[85%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
+                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="users" size="20"></i></button>
+                        <button onClick={() => setActiveTab('reminder')} className={activeTab === 'reminder' ? 'text-neon' : 'opacity-20'}><i data-lucide="calendar-clock" size="20"></i></button>
+                        <button onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl active:scale-90"><i data-lucide="plus" color="white" size="24"></i></button>
+                        <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="shield-check" size="20"></i></button>
                     </nav>
 
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[95vh] overflow-y-auto no-scrollbar shadow-2xl">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
                                 <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <form onSubmit={handleSave} className="space-y-5">
-                                    <label className="w-24 h-32 bg-white/5 rounded-2xl border-2 border-dashed border-white/10 mx-auto flex items-center justify-center cursor-pointer overflow-hidden relative active:scale-95 transition-transform">
-                                        {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <i data-lucide="camera" size="20" className="opacity-10"></i>}
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                                    </label>
+                                <form onSubmit={handleSave} className="space-y-5 pt-4">
+                                    <h2 className="text-center font-luxury italic text-xl text-neon mb-4">Hồ sơ khách hàng</h2>
                                     <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                                     <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
                                         <option value="Phun chân mày shading">Phun chân mày shading</option>
-                                        <option value="Phun chân mày shading-cover">Phun chân mày shading-cover</option>
                                         <option value="Phun chân mày Sợi">Phun chân mày Sợi</option>
-                                        <option value="Phun chân mày Sợi-cover">Phun chân mày Sợi-cover</option>
-                                        <option value="Phun chân mày Mix">Phun chân mày Mix</option>
-                                        <option value="Phun chân mày Mix-cover">Phun chân mày Mix-cover</option>
-                                        <option value="Phun Môi cấp độ 1">Phun Môi cấp độ 1</option>
-                                        <option value="Phun Môi cđ2-cover">Phun Môi cđ2-cover</option>
-                                        <option value="Hút dung dịch môi">Hút dung dịch môi</option>
-                                        <option value="hút dung dịch mày">hút dung dịch mày</option>
-                                        <option value="xoá laser">xoá laser</option>
+                                        <option value="Phun Môi">Phun Môi</option>
+                                        <option value="Hút dung dịch">Hút dung dịch</option>
+                                        <option value="Xoá Laser">Xoá Laser</option>
                                     </select>
                                     <div className="grid grid-cols-2 gap-3">
                                         <input type="date" className="p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                                         <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                                     </div>
-                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="LƯU Ý CÔNG THỨC MỰC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98] transition-all">LƯU HỒ SƠ</button>
+                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="GHI CHÚ CÔNG THỨC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98]">LƯU DỮ LIỆU</button>
                                 </form>
                             </div>
-                        </div>
-                    )}
-
-                    {viewingImage && (
-                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-4 animate-up" onClick={() => setViewingImage(null)}>
-                            <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-[2.5rem] border border-white/10" />
                         </div>
                     )}
                 </div>
