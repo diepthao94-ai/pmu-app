@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Hệ Thống Quản Lý</title>
+    <title>Diệp Thảo PMU - Hệ Thống Quản Lý Hồ Sơ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -11,28 +11,29 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0d0d0d; color: white; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: #080808; color: #f2f2f2; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .bg-glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .animate-fade { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .bg-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.4); }
+        .animate-up { animation: fadeInUp 0.4s ease-out; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        input, select, textarea { color: white !important; }
     </style>
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        window.FirebaseSDK = { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc, limit, getAuth, signInAnonymously, onAuthStateChanged };
+        window.FirebaseSDK = { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, where, getDocs, getAuth, signInAnonymously, onAuthStateChanged };
     </script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc, limit, getAuth, signInAnonymously, onAuthStateChanged } = window.FirebaseSDK;
+        const { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, where, getDocs, getAuth, signInAnonymously, onAuthStateChanged } = window.FirebaseSDK;
         const { useState, useEffect, useMemo } = React;
 
-        // --- CẤU HÌNH FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyCagpAIdIzUWidSC7liNvQVFHr-hpZZEbQ",
             authDomain: "quanlydiepthao.firebaseapp.com",
@@ -43,264 +44,198 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = 'diep-thao-pmu-app';
+        const ADMIN_PASS = "5252"; // MẬT MÃ ADMIN ĐÃ CẬP NHẬT
 
         function App() {
-            const [user, setUser] = useState(null);
-            const [accessList, setAccessList] = useState([]);
             const [activeTab, setActiveTab] = useState('customers');
+            const [isAdmin, setIsAdmin] = useState(false);
             const [customers, setCustomers] = useState([]);
-            const [activities, setActivities] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [editingCustomer, setEditingCustomer] = useState(null);
             const [loading, setLoading] = useState(true);
             const [viewingImage, setViewingImage] = useState(null);
-            const [showRevenue, setShowRevenue] = useState(false);
-            const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-            const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
             const [formData, setFormData] = useState({
-                name: '', service: '', inkColor: '', technician: 'Diệp Thảo',
+                name: '', service: 'Chân mày Shading', inkColor: '', technician: 'Diệp Thảo',
                 price: '', date: new Date().toISOString().split('T')[0], note: '',
                 imgBefore: '', imgAfter: '', imgHealed: ''
             });
 
-            // Kiểm tra quyền Admin (Nếu ko có email trong list, mặc định là chủ tiệm - Admin)
-            const isAdmin = useMemo(() => {
-                if (!user) return false;
-                const record = accessList.find(a => a.email?.toLowerCase() === user.email?.toLowerCase());
-                return record?.role === 'admin' || !user.email || user.isAnonymous; 
-            }, [user, accessList]);
-
             useEffect(() => {
-                signInAnonymously(auth).catch(console.error);
-                return onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                    if (u) loadDatabase();
-                });
-            }, []);
-
-            const loadDatabase = () => {
-                const baseRoute = ['artifacts', appId, 'public', 'data'];
-                
-                // Tải danh sách khách
-                onSnapshot(query(collection(db, ...baseRoute, 'customers'), orderBy('date', 'desc')), (snap) => {
+                const baseRoute = ['artifacts', appId, 'public', 'data', 'customers'];
+                return onSnapshot(query(collection(db, ...baseRoute), orderBy('date', 'desc')), (snap) => {
                     setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                     setLoading(false);
                 });
+            }, []);
 
-                // Tải nhật ký
-                onSnapshot(query(collection(db, ...baseRoute, 'activityLogs'), orderBy('timestamp', 'desc'), limit(50)), (snap) => {
-                    setActivities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
+            const triggerVibrate = () => { if (navigator.vibrate) navigator.vibrate(70); };
 
-                // Tải danh sách quyền
-                onSnapshot(collection(db, ...baseRoute, 'accessList'), (snap) => {
-                    setAccessList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
-            };
-
-            const logActivity = async (action, details) => {
-                try {
-                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'activityLogs'), {
-                        action, details, userName: "Hệ thống", timestamp: new Date().toISOString()
-                    });
-                } catch (e) { console.error(e); }
+            const checkAdmin = () => {
+                if (isAdmin) { setActiveTab('admin'); return; }
+                const pass = prompt("Nhập mã Admin để xem báo cáo:");
+                if (pass === ADMIN_PASS) { setIsAdmin(true); setActiveTab('admin'); }
+                else alert("Sai mã!");
             };
 
             const handleSave = async (e) => {
                 e.preventDefault();
+                if (!formData.name) return;
+                const data = { ...formData, price: Number(formData.price) || 0, updatedAt: new Date().toISOString() };
+                const customersRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
+
                 try {
-                    const data = { ...formData, price: Number(formData.price) || 0 };
-                    if (editingCustomer) {
-                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), data);
-                        await logActivity("Cập nhật", data.name);
+                    // TÍNH NĂNG: KIỂM TRA TRÙNG LẶP
+                    if (!editingCustomer) {
+                        const q = query(customersRef, where("name", "==", data.name.trim()));
+                        const querySnapshot = await getDocs(q);
+                        
+                        if (!querySnapshot.empty) {
+                            if (window.confirm(`Khách "${data.name}" đã tồn tại. Bạn có muốn CẬP NHẬT thông tin vào hồ sơ cũ này không?`)) {
+                                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', querySnapshot.docs[0].id), data);
+                            } else return;
+                        } else {
+                            await addDoc(customersRef, data);
+                        }
                     } else {
-                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'customers'), data);
-                        await logActivity("Thêm mới", data.name);
+                        // TÍNH NĂNG: CẬP NHẬT (SỬA)
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), data);
                     }
+                    
+                    triggerVibrate();
                     setIsModalOpen(false);
                     resetForm();
-                } catch (err) { alert("Lỗi khi lưu: " + err.message); }
+                } catch (err) { alert("Lỗi kết nối Firebase!"); }
+            };
+
+            // TÍNH NĂNG: XOÁ HỒ SƠ
+            const handleDelete = async (id, name) => {
+                if (window.confirm(`Bạn chắc chắn muốn XOÁ vĩnh viễn hồ sơ khách: ${name}?`)) {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
+                    triggerVibrate();
+                }
             };
 
             const resetForm = () => {
                 setEditingCustomer(null);
-                setFormData({ name: '', service: '', inkColor: '', technician: 'Diệp Thảo', price: '', date: new Date().toISOString().split('T')[0], note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
+                setFormData({ name: '', service: 'Chân mày Shading', inkColor: '', technician: 'Diệp Thảo', price: '', date: new Date().toISOString().split('T')[0], note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
             };
 
-            // Logic nhắc lịch dặm
             const reminderList = useMemo(() => {
                 const today = new Date();
                 return customers.filter(c => {
                     const diffDays = Math.floor((today - new Date(c.date)) / (1000 * 60 * 60 * 24));
-                    const svc = (c.service || "").toLowerCase();
-                    if (svc.includes('laser')) return diffDays >= 15 && diffDays <= 20;
-                    if (svc.includes('mày') || svc.includes('dịch')) return diffDays >= 30 && diffDays <= 40;
-                    if (svc.includes('môi')) return diffDays >= 60 && diffDays <= 75;
-                    return false;
-                });
+                    if (c.service.includes("Môi")) return diffDays >= 60;
+                    if (c.service.includes("Laser")) return diffDays >= 15;
+                    return diffDays >= 30; // Mày, Mí, Hút
+                }).slice(0, 15);
             }, [customers]);
 
-            const filteredCustomers = useMemo(() => {
+            const monthlyRevenue = useMemo(() => {
+                const now = new Date();
                 return customers.filter(c => {
                     const d = new Date(c.date);
-                    return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear && 
-                           c.name.toLowerCase().includes(searchTerm.toLowerCase());
-                });
-            }, [customers, selectedMonth, selectedYear, searchTerm]);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }).reduce((sum, c) => sum + (c.price || 0), 0);
+            }, [customers]);
 
-            const totalRevenue = useMemo(() => filteredCustomers.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0), [filteredCustomers]);
-
-            // Cập nhật Icons sau mỗi lần Render
             useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
 
-            if (loading) return (
-                <div className="h-screen flex flex-col items-center justify-center bg-[#0a0a0a]">
-                    <div className="w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-[10px] font-bold tracking-[0.3em] text-pink-500 uppercase">Đang đồng bộ dữ liệu...</p>
-                </div>
-            );
+            if (loading) return <div className="h-screen flex items-center justify-center bg-black text-pink-500 font-black tracking-[0.5em] text-[10px] animate-pulse">DIỆP THẢO PMU...</div>;
 
             return (
-                <div className="min-h-screen pb-32">
-                    {/* Thanh Điều Hướng Dưới */}
-                    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-md bg-black/80 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl">
-                        <button onClick={() => setActiveTab('customers')} className={`flex flex-col items-center gap-1 ${activeTab === 'customers' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="users" size="20"></i><span className="text-[7px] font-bold uppercase">Hồ sơ</span></button>
-                        <button onClick={() => setActiveTab('reminders')} className={`flex flex-col items-center gap-1 relative ${activeTab === 'reminders' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="bell" size="20"></i>{reminderList.length > 0 && <span className="absolute top-0 right-1 w-2 h-2 bg-pink-500 rounded-full animate-pulse"></span>}<span className="text-[7px] font-bold uppercase">Lịch dặm</span></button>
-                        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="relative -mt-12 bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full border-4 border-[#0d0d0d] shadow-lg shadow-pink-500/30 active:scale-90 transition-transform"><i data-lucide="plus" color="white"></i></button>
-                        <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1 ${activeTab === 'history' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="history" size="20"></i><span className="text-[7px] font-bold uppercase">Nhật ký</span></button>
-                        <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="settings" size="20"></i><span className="text-[7px] font-bold uppercase">Cài đặt</span></button>
-                    </nav>
+                <div className="min-h-screen pb-28 px-4 pt-8">
+                    {/* Header */}
+                    <header className="flex justify-between items-center mb-8">
+                        <div>
+                            <h1 className="text-2xl font-black italic tracking-tighter text-neon uppercase italic">Diệp Thảo</h1>
+                            <p className="text-[7px] tracking-[0.4em] font-bold opacity-30 uppercase">Professional System</p>
+                        </div>
+                        <div className="bg-card px-4 py-2 rounded-2xl border border-white/5 shadow-inner">
+                            <span className="text-[9px] font-black uppercase text-pink-400">{isAdmin ? 'Admin' : 'Nhân viên'}</span>
+                        </div>
+                    </header>
 
-                    <main className="max-w-xl mx-auto p-6 pt-10">
-                        <header className="mb-8 flex justify-between items-start animate-fade">
-                            <div>
-                                <h1 className="text-3xl font-light tracking-tighter">Diệp Thảo <span className="italic font-serif text-pink-300">PMU</span></h1>
-                                <p className="text-[8px] font-bold text-white/20 uppercase tracking-[0.4em] mt-1 italic">QUẢN LÝ CHUYÊN NGHIỆP</p>
-                            </div>
-                            {isAdmin && (
-                                <div className="bg-white/5 border border-white/10 p-3 rounded-2xl text-right">
-                                    <div className="flex items-center gap-2 justify-end">
-                                        <p className="text-[7px] font-bold text-pink-400 uppercase">Doanh thu T{selectedMonth+1}</p>
-                                        <button onClick={() => setShowRevenue(!showRevenue)}>{showRevenue ? <i data-lucide="eye-off" size="12"></i> : <i data-lucide="eye" size="12"></i>}</button>
-                                    </div>
-                                    <p className="text-sm font-bold font-mono">{showRevenue ? `${totalRevenue.toLocaleString()}đ` : '********'}</p>
-                                </div>
-                            )}
-                        </header>
+                    {/* Search Bar */}
+                    <div className="bg-card rounded-[1.5rem] flex items-center px-5 py-4 mb-6 shadow-xl">
+                        <i data-lucide="search" size="14" className="opacity-30 mr-3"></i>
+                        <input type="text" placeholder="Tìm tên khách hàng..." className="bg-transparent text-[11px] font-bold outline-none w-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
 
-                        {activeTab === 'customers' && (
-                            <div className="space-y-6 animate-fade">
-                                {/* Bộ lọc & Tìm kiếm */}
-                                <div className="space-y-3">
-                                    <div className="bg-white/5 border border-white/5 rounded-2xl flex items-center px-4 py-3">
-                                        <i data-lucide="search" size="16" className="text-white/20 mr-3"></i>
-                                        <input type="text" placeholder="Tìm tên khách hàng..." className="bg-transparent text-xs outline-none w-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <div className="flex-1 flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl px-3 h-12">
-                                            <button onClick={() => setSelectedMonth(m => m === 0 ? 11 : m - 1)}><i data-lucide="chevron-left" size="16"></i></button>
-                                            <span className="text-[10px] font-black uppercase">Tháng {selectedMonth+1}</span>
-                                            <button onClick={() => setSelectedMonth(m => m === 11 ? 0 : m + 1)}><i data-lucide="chevron-right" size="16"></i></button>
-                                        </div>
-                                        <div className="flex-1 flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl px-3 h-12 text-[10px] font-black uppercase">
-                                            <button onClick={() => setSelectedYear(y => y-1)}><i data-lucide="chevron-left" size="16"></i></button>
-                                            {selectedYear}
-                                            <button onClick={() => setSelectedYear(y => y+1)}><i data-lucide="chevron-right" size="16"></i></button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Danh sách hồ sơ */}
-                                <div className="grid gap-6">
-                                    {filteredCustomers.length === 0 ? 
-                                        <div className="py-20 text-center opacity-20 uppercase text-[10px] font-bold tracking-widest">Không có dữ liệu</div> : 
-                                        filteredCustomers.map(c => (
-                                            <div key={c.id} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-6 backdrop-blur-sm relative overflow-hidden active:bg-white/[0.04] transition-colors">
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <div className="flex gap-4 items-center">
-                                                        <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-300 font-serif text-xl border border-pink-500/20">{c.name.charAt(0).toUpperCase()}</div>
-                                                        <div>
-                                                            <h3 className="text-sm font-bold uppercase tracking-wider">{c.name}</h3>
-                                                            <div className="flex flex-wrap gap-2 mt-1">
-                                                                <span className="text-[7px] font-bold bg-pink-500/10 text-pink-400 px-2 py-0.5 rounded-md uppercase border border-pink-500/10">{c.service}</span>
-                                                                <span className="text-[7px] font-bold text-white/30 uppercase flex items-center gap-1"><i data-lucide="calendar" size="8"></i> {c.date}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button onClick={() => { setEditingCustomer(c); setFormData(c); setIsModalOpen(true); }} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-white"><i data-lucide="edit-3" size="16"></i></button>
-                                                </div>
-
-                                                <div className="grid grid-cols-3 gap-2 mb-4">
-                                                    {['imgBefore', 'imgAfter', 'imgHealed'].map((k, i) => (
-                                                        <div key={i} className="aspect-[3/4] bg-white/[0.02] rounded-xl overflow-hidden border border-white/5 relative cursor-pointer active:scale-95 transition-transform" onClick={() => c[k] && setViewingImage(c[k])}>
-                                                            {c[k] ? <img src={c[k]} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center opacity-5 gap-1 pt-4"><i data-lucide="image" size="14"></i><span className="text-[6px] font-black uppercase">{i===0?'Trước':i===1?'Sau':'Lành'}</span></div>}
-                                                        </div>
-                                                    ))}
-                                                </div>
-
-                                                <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-white/20 pt-4 border-t border-white/5">
-                                                    <span>Làm bởi: <span className="text-white/60">{c.technician}</span></span>
-                                                    {isAdmin && <span>{Number(c.price).toLocaleString()}đ</span>}
-                                                </div>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'reminders' && (
-                            <div className="space-y-6 animate-fade">
-                                <h2 className="text-lg font-light tracking-tight flex items-center gap-3"><i data-lucide="bell" className="text-pink-500"></i> KHÁCH ĐẾN LỊCH DẶM</h2>
-                                <div className="space-y-3">
-                                    {reminderList.length === 0 ? <p className="text-center py-20 opacity-20 text-[10px] uppercase font-black">Hôm nay chưa có lịch</p> : 
-                                        reminderList.map(c => (
-                                            <div key={c.id} className="bg-white/5 p-5 rounded-3xl border border-white/5 flex items-center justify-between">
-                                                <div>
-                                                    <h4 className="text-[11px] font-bold uppercase">{c.name}</h4>
-                                                    <p className="text-[8px] text-white/30 uppercase mt-0.5">{c.service} • Làm ngày {c.date}</p>
-                                                </div>
-                                                <button className="bg-white text-black px-4 py-2 rounded-xl text-[8px] font-black uppercase active:scale-95">Liên hệ</button>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'history' && (
-                            <div className="space-y-4 animate-fade">
-                                <h2 className="text-[10px] font-bold uppercase tracking-widest text-white/20 italic mb-6">Nhật ký hoạt động mới nhất</h2>
-                                {activities.map(log => (
-                                    <div key={log.id} className="bg-white/[0.01] border border-white/5 p-4 rounded-2xl flex items-center gap-4">
-                                        <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/20"><i data-lucide="check-circle-2" size="12"></i></div>
+                    {activeTab === 'customers' ? (
+                        <div className="space-y-4 animate-up">
+                            {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
+                                <div key={c.id} className="bg-card rounded-[2rem] p-6 shadow-2xl border border-white/5">
+                                    <div className="flex justify-between items-start mb-5">
                                         <div>
-                                            <p className="text-[10px] font-bold uppercase text-white/70">{log.action}: <span className="text-pink-400">{log.details}</span></p>
-                                            <p className="text-[8px] text-white/10 mt-1 uppercase italic">{new Date(log.timestamp).toLocaleString()}</p>
+                                            <h3 className="text-[13px] font-black uppercase tracking-tight mb-1">{c.name}</h3>
+                                            <div className="flex gap-2 items-center">
+                                                <span className="text-[8px] bg-pink-500/10 text-pink-400 px-2.5 py-1 rounded-full font-bold uppercase border border-pink-500/20">{c.service}</span>
+                                                <span className="text-[8px] opacity-40 font-mono font-bold uppercase italic">{c.date}</span>
+                                            </div>
                                         </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="p-2.5 bg-white/5 rounded-xl border border-white/5 active:bg-white/10"><i data-lucide="edit-3" size="14"></i></button>
+                                            {isAdmin && <button onClick={() => handleDelete(c.id, c.name)} className="p-2.5 bg-red-500/10 text-red-500 rounded-xl border border-red-500/10 active:bg-red-500/20"><i data-lucide="trash-2" size="14"></i></button>}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2.5">
+                                        {['imgBefore', 'imgAfter', 'imgHealed'].map(img => (
+                                            <div key={img} className="aspect-[3/4] bg-[#000] rounded-2xl border border-white/5 overflow-hidden shadow-inner" onClick={() => c[img] && setViewingImage(c[img])}>
+                                                {c[img] ? <img src={c[img]} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-[7px] opacity-10 font-black uppercase italic tracking-widest">{img.replace('img','')}</div>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="space-y-6 animate-up">
+                            <div className="bg-card p-8 rounded-[2.5rem] text-center border-b-4 border-pink-500/30">
+                                <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-2">Doanh thu tháng {new Date().getMonth() + 1}</p>
+                                <p className="text-3xl font-black text-neon tracking-tighter">{monthlyRevenue.toLocaleString()} VNĐ</p>
+                            </div>
+
+                            <div className="flex items-center gap-3 mb-4 mt-8 px-2">
+                                <i data-lucide="bell-ring" size="14" className="text-orange-400"></i>
+                                <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400">Lịch dặm lại hôm nay</h2>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                {reminderList.map(c => (
+                                    <div key={c.id} className="bg-orange-500/5 border border-orange-500/10 p-5 rounded-[1.5rem] flex justify-between items-center">
+                                        <div>
+                                            <p className="text-[11px] font-black uppercase tracking-tight">{c.name}</p>
+                                            <p className="text-[8px] opacity-50 uppercase font-bold mt-0.5">{c.service} • Làm từ: {c.date}</p>
+                                        </div>
+                                        <a href={`https://zalo.me/search?q=${c.name}`} target="_blank" className="p-3 bg-orange-500 text-white rounded-full shadow-lg shadow-orange-500/20 active:scale-90 transition-transform"><i data-lucide="message-circle" size="16"></i></a>
                                     </div>
                                 ))}
                             </div>
-                        )}
-                    </main>
+                        </div>
+                    )}
 
-                    {/* Modal Form Nhập Liệu */}
+                    {/* Navigation Bar */}
+                    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[88%] max-w-md bg-black/80 border border-white/10 flex justify-around items-center p-3 z-50 backdrop-blur-3xl rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                        <button onClick={() => setActiveTab('customers')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'customers' ? 'text-neon scale-110' : 'opacity-20'}`}><i data-lucide="users-2" size="20"></i><span className="text-[7px] font-black uppercase">Hồ sơ</span></button>
+                        <button onClick={() => {resetForm(); setIsModalOpen(true);}} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-12 border-4 border-[#080808] active:scale-90 transition-all shadow-xl shadow-pink-600/30"><i data-lucide="plus" color="white" size="24"></i></button>
+                        <button onClick={checkAdmin} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'admin' ? 'text-neon scale-110' : 'opacity-20'}`}><i data-lucide="layout-dashboard" size="20"></i><span className="text-[7px] font-black uppercase">Admin</span></button>
+                    </nav>
+
+                    {/* Modal Thêm/Sửa */}
                     {isModalOpen && (
-                        <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-4 backdrop-blur-3xl animate-fade">
-                            <div className="bg-[#0a0a0a] w-full max-w-lg rounded-[3rem] p-8 border border-white/5 max-h-[92vh] overflow-y-auto no-scrollbar relative shadow-2xl">
-                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 text-white/20 hover:text-white"><i data-lucide="x" size="24"></i></button>
-                                <h2 className="text-center mb-8 font-light italic uppercase tracking-widest text-pink-300">{editingCustomer ? 'Cập nhật hồ sơ' : 'Khách hàng mới'}</h2>
-                                
-                                <form onSubmit={handleSave} className="space-y-6">
+                        <div className="fixed inset-0 bg-black/98 z-[100] p-6 flex items-center justify-center overflow-y-auto no-scrollbar">
+                            <div className="bg-[#0c0c0c] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative my-auto animate-up">
+                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 opacity-30"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center text-[11px] font-black uppercase tracking-[0.5em] text-pink-500 mb-10">{editingCustomer ? 'Cập nhật hồ sơ' : 'Thêm khách hàng mới'}</h2>
+                                <form onSubmit={handleSave} className="space-y-5">
                                     <div className="grid grid-cols-3 gap-3">
                                         {['imgBefore', 'imgAfter', 'imgHealed'].map(f => (
-                                            <label key={f} className="aspect-[3/4] rounded-2xl border border-white/5 bg-white/5 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative active:scale-95 transition-transform">
-                                                {formData[f] ? <img src={formData[f]} className="w-full h-full object-cover" /> : <><i data-lucide="camera" className="opacity-10 mb-1"></i><span className="text-[6px] font-black uppercase opacity-20">{f.replace('img', '')}</span></>}
+                                            <label key={f} className="aspect-[3/4] bg-white/5 rounded-2xl border-2 border-dashed border-white/5 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative active:scale-95 transition-transform">
+                                                {formData[f] ? <img src={formData[f]} className="w-full h-full object-cover" /> : <i data-lucide="camera" size="18" className="opacity-10"></i>}
                                                 <input type="file" accept="image/*" className="hidden" onChange={e => {
                                                     const reader = new FileReader();
                                                     reader.onload = () => setFormData({...formData, [f]: reader.result});
@@ -309,46 +244,30 @@
                                             </label>
                                         ))}
                                     </div>
-                                    
-                                    <div className="space-y-4">
-                                        <input required className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-xs font-bold outline-none focus:border-pink-500/30" placeholder="Tên khách hàng..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                                        
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {['Diệp Thảo', 'Chuyên Viên'].map(t => (
-                                                <button key={t} type="button" onClick={() => setFormData({...formData, technician: t})} className={`p-4 rounded-2xl text-[9px] font-black uppercase border transition-all ${formData.technician === t ? 'bg-pink-500 border-pink-500 text-white' : 'bg-white/5 border-white/5 text-white/20'}`}>{t}</button>
-                                            ))}
-                                        </div>
-
-                                        <select required className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-bold text-white/50 outline-none" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
-                                            <option value="">-- CHỌN DỊCH VỤ --</option>
-                                            <option value="Chân mày Shading">Chân mày Shading</option>
-                                            <option value="Chân mày Hairstrokes">Chân mày Hairstrokes</option>
-                                            <option value="Phun môi Collagen">Phun môi Collagen</option>
-                                            <option value="Laser Pico xóa xăm">Laser Pico xóa xăm</option>
-                                            <option value="Hút dung dịch dung hòa">Hút dung dịch dung hòa</option>
-                                        </select>
-
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <input type="date" className="p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-bold text-white outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                                            <input type="number" className="p-4 bg-pink-500/5 border border-pink-500/20 rounded-2xl text-[10px] font-bold text-pink-300 outline-none" placeholder="Giá tiền" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
-                                        </div>
-
-                                        <input className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-bold outline-none" placeholder="Mã mực / Công thức..." value={formData.inkColor} onChange={e => setFormData({...formData, inkColor: e.target.value})} />
-                                        <textarea className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] text-white/50 outline-none" rows="2" placeholder="Ghi chú thêm..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <input required className="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-[12px] font-black outline-none focus:border-pink-500/50 transition-all uppercase placeholder:opacity-20" placeholder="Tên khách hàng..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <select className="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-[12px] font-black text-white outline-none appearance-none" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                        <option value="Chân mày Shading">Chân mày Shading</option>
+                                        <option value="Chân mày Hairstrokes">Chân mày Hairstrokes</option>
+                                        <option value="Phun môi Collagen">Phun môi Collagen</option>
+                                        <option value="Phun mí mở tròng">Phun mí mở tròng</option>
+                                        <option value="Hút dung dịch">Hút dung dịch</option>
+                                        <option value="Laser Pico">Laser Pico</option>
+                                    </select>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <input type="date" className="p-5 bg-white/5 border border-white/5 rounded-2xl text-[12px] font-black text-white uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                                        <input type="number" className="p-5 bg-white/5 border border-white/5 rounded-2xl text-[12px] font-black text-pink-400 outline-none placeholder:opacity-20" placeholder="Giá tiền..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                                     </div>
-                                    <button className="w-full bg-white text-black py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-2 active:scale-95 shadow-xl transition-all">
-                                        <i data-lucide="save" size="16"></i> LƯU HỒ SƠ
-                                    </button>
+                                    <textarea className="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-[12px] font-medium h-24 text-white/50 outline-none placeholder:opacity-20" placeholder="Công thức mực, thông số kim, lưu ý thêm..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-6 rounded-[3rem] text-[11px] font-black uppercase tracking-[0.3em] shadow-2xl shadow-pink-600/40 active:scale-[0.98] transition-all mt-4">Lưu hồ sơ ngay</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* Xem ảnh phóng to */}
+                    {/* Trình xem ảnh */}
                     {viewingImage && (
-                        <div className="fixed inset-0 bg-black/95 z-[110] flex flex-col items-center justify-center p-6 animate-fade" onClick={() => setViewingImage(null)}>
-                            <div className="absolute top-10 right-10 text-white/50"><i data-lucide="x" size="32"></i></div>
-                            <img src={viewingImage} className="max-w-full max-h-[80vh] rounded-3xl object-contain shadow-2xl border border-white/10" />
+                        <div className="fixed inset-0 bg-black/98 z-[110] flex items-center justify-center p-4 animate-up" onClick={() => setViewingImage(null)}>
+                            <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-2xl shadow-[0_0_100px_rgba(255,105,180,0.2)]" />
                         </div>
                     )}
                 </div>
