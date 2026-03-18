@@ -3,23 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Optimized V6</title>
+    <title>Diệp Thảo PMU - Ultra Stable</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@300;400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020202; color: #f2f2f2; overflow-x: hidden; }
-        .font-luxury { font-family: 'Playfair Display', serif; }
-        .bg-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.6); }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .animate-up { animation: fadeInUp 0.4s ease-out; }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        input, select, textarea { background: rgba(255,255,255,0.05) !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px; }
-        .gate-title { letter-spacing: 0.5em; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@400;600;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #020202; color: #f2f2f2; -webkit-tap-highlight-color: transparent; }
+        .text-neon { color: #ff69b4; text-shadow: 0 0 10px rgba(255, 105, 180, 0.5); }
+        .bg-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        input, select, textarea { background: #111 !important; color: white !important; border: 1px solid #222 !important; border-radius: 10px; padding: 12px; }
+        .gate-title { letter-spacing: 0.4em; }
     </style>
     
     <script type="module">
@@ -33,14 +29,13 @@
 
     <script type="text/babel">
         const { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } = window.FirebaseSDK;
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect } = React;
 
         const firebaseConfig = {
             apiKey: "AIzaSyCagpAIdIzUWidSC7liNvQVFHr-hpZZEbQ",
             authDomain: "quanlydiepthao.firebaseapp.com",
             projectId: "quanlydiepthao",
             storageBucket: "quanlydiepthao.firebasestorage.app",
-            messagingSenderId: "2061214359",
             appId: "1:2061214359:web:b845ac95d41b284aa1ffd2"
         };
 
@@ -55,249 +50,168 @@
             const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem('webUnlocked') === 'true');
             const [activeTab, setActiveTab] = useState('home');
             const [isAdminMode, setIsAdminMode] = useState(false);
-            const [showTotal, setShowTotal] = useState(false);
             const [customers, setCustomers] = useState([]);
-            const [logs, setLogs] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
             const [isModalOpen, setIsModalOpen] = useState(false);
-            const [isNotifyOpen, setIsNotifyOpen] = useState(false);
             const [editingCustomer, setEditingCustomer] = useState(null);
-            const [loading, setLoading] = useState(true);
             const [viewingImage, setViewingImage] = useState(null);
+            const [isSaving, setIsSaving] = useState(false);
             
             const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
             const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || ADMIN_EMAIL);
-
-            useEffect(() => {
-                if (!isUnlocked) return;
-                const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
-                const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-                
-                const unsubCust = onSnapshot(query(custRef, orderBy('date', 'desc')), (snap) => {
-                    setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                    setLoading(false);
-                });
-                const unsubLog = onSnapshot(query(logRef, orderBy('time', 'desc')), (snap) => {
-                    setLogs(snap.docs.map(d => d.data()).slice(0, 30));
-                });
-                return () => { unsubCust(); unsubLog(); };
-            }, [isUnlocked]);
-
-            const triggerVibrate = () => { if (navigator.vibrate) navigator.vibrate(50); };
-
-            const checkPermission = () => {
-                const currentEmail = (myEmail || "").trim().toLowerCase();
-                if (currentEmail === ADMIN_EMAIL.toLowerCase()) return true;
-                const authorizedList = staffList.split(',').map(e => e.trim().toLowerCase());
-                if (authorizedList.includes(currentEmail) && currentEmail !== "") return true;
-                alert("Email này chưa được phê duyệt.");
-                return false;
-            };
-
-            const addLog = async (action) => {
-                try {
-                    const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-                    await addDoc(logRef, { user: myEmail || "Ẩn danh", action, time: new Date().toLocaleString('vi-VN') });
-                } catch(e) {}
-            };
 
             const [formData, setFormData] = useState({
                 name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0],
                 price: '', note: '', image: ''
             });
 
-            // HÀM NÉN ẢNH ĐỂ WEB SIÊU NHẸ
-            const handleImageChange = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 400; // Giảm kích thước ảnh xuống mức tối ưu
-                        const scaleSize = MAX_WIDTH / img.width;
-                        canvas.width = MAX_WIDTH;
-                        canvas.height = img.height * scaleSize;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7); // Nén 70% chất lượng
-                        setFormData({...formData, image: compressedBase64});
+            useEffect(() => {
+                if (!isUnlocked) return;
+                const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
+                return onSnapshot(query(custRef, orderBy('date', 'desc')), (snap) => {
+                    setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                });
+            }, [isUnlocked]);
+
+            const checkPermission = () => {
+                const mail = (myEmail || "").trim().toLowerCase();
+                if (mail === ADMIN_EMAIL.toLowerCase()) return true;
+                if (staffList.toLowerCase().includes(mail) && mail !== "") return true;
+                alert("Bạn chưa được cấp quyền lưu hồ sơ.");
+                return false;
+            };
+
+            const resizeImage = (file) => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            const size = 300; // Cực nhẹ
+                            canvas.width = size;
+                            canvas.height = (img.height * size) / img.width;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            resolve(canvas.toDataURL('image/jpeg', 0.6));
+                        };
+                        img.src = e.target.result;
                     };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
+                    reader.readAsDataURL(file);
+                });
+            };
+
+            const handleImage = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const compressed = await resizeImage(file);
+                        setFormData(prev => ({...prev, image: compressed}));
+                    } catch (err) { alert("Lỗi xử lý ảnh, vui lòng thử lại."); }
+                }
             };
 
             const handleSave = async (e) => {
                 e.preventDefault();
-                if (!checkPermission()) return;
-                
-                triggerVibrate();
-                const data = { ...formData, price: Number(formData.price) || 0 };
-                const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
+                if (!checkPermission() || isSaving) return;
+                setIsSaving(true);
 
                 try {
+                    const data = { ...formData, price: Number(formData.price) || 0 };
+                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
                     if (editingCustomer) {
                         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), data);
-                        addLog(`Sửa khách: ${data.name}`);
                     } else {
-                        await addDoc(custRef, data);
-                        addLog(`Thêm khách: ${data.name}`);
+                        await addDoc(colRef, data);
                     }
                     setIsModalOpen(false);
                     setEditingCustomer(null);
                     setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '', image: '' });
-                } catch (err) { alert("Lỗi lưu dữ liệu!"); }
+                } catch (err) { alert("Không thể lưu. Hãy kiểm tra mạng."); }
+                setIsSaving(false);
             };
-
-            const handleDelete = async (id, name) => {
-                const pass = prompt("Nhập mã 5252 để xoá:");
-                if (pass === ADMIN_PASS) {
-                    if (confirm(`Xoá hồ sơ: ${name}?`)) {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
-                        addLog(`Xoá khách: ${name}`);
-                        triggerVibrate();
-                    }
-                }
-            };
-
-            const handleUnlock = (e) => {
-                if (e.target.value === WEB_LOCK) {
-                    setIsUnlocked(true);
-                    sessionStorage.setItem('webUnlocked', 'true');
-                    triggerVibrate();
-                }
-            };
-
-            const reminders = useMemo(() => {
-                const today = new Date();
-                const getDiff = (d) => Math.floor((today - new Date(d)) / (1000 * 60 * 60 * 24));
-                return {
-                    moi: customers.filter(c => c.service.includes("Môi") && getDiff(c.date) >= 60),
-                    may: customers.filter(c => (c.service.toLowerCase().includes("mày") || c.service.includes("Hút")) && getDiff(c.date) >= 30),
-                    laser: customers.filter(c => c.service.toLowerCase().includes("laser") && getDiff(c.date) >= 15),
-                };
-            }, [customers]);
-
-            const revenue = useMemo(() => {
-                const now = new Date();
-                return customers.filter(c => new Date(c.date).getMonth() === now.getMonth())
-                                .reduce((s, c) => s + (c.price || 0), 0);
-            }, [customers]);
-
-            useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
 
             if (!isUnlocked) return (
-                <div className="h-screen bg-[#020202] flex flex-col items-center justify-center p-12">
-                    <h1 className="text-3xl font-black text-white gate-title mb-12 animate-up uppercase tracking-[0.4em]">DIEPTHAO PMU</h1>
-                    <input type="password" autoFocus placeholder="MẬT MÃ..." 
-                        className="w-full max-w-xs p-5 text-center tracking-[1em] font-bold text-lg outline-none"
-                        onChange={handleUnlock} />
+                <div className="h-screen bg-black flex flex-col items-center justify-center p-10">
+                    <h1 className="text-2xl font-black text-white gate-title mb-8 uppercase">DIEPTHAO PMU</h1>
+                    <input type="password" placeholder="MẬT MÃ..." className="w-full max-w-xs text-center tracking-widest" 
+                        onChange={(e) => e.target.value === WEB_LOCK && setIsUnlocked(true)} />
                 </div>
             );
 
             return (
-                <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto">
-                    <header className="flex justify-between items-start mb-10">
-                        <div className="animate-up">
-                            <div className="flex items-baseline gap-2">
-                                <h1 className="text-2xl font-black text-white">Diệp Thảo</h1>
-                                <span className="font-luxury italic text-2xl text-neon">PMU</span>
-                            </div>
-                            <p className="text-[7px] tracking-[0.55em] text-white/30 mt-1.5 uppercase border-t border-white/5 pt-1.5 font-medium">Phun Xăm Chuyên Nghiệp</p>
+                <div className="min-h-screen pb-24 pt-6 px-5 max-w-md mx-auto">
+                    <header className="flex justify-between items-center mb-8">
+                        <div>
+                            <h1 className="text-xl font-black text-white">Diệp Thảo <span className="text-neon font-luxury italic">PMU</span></h1>
                         </div>
-                        <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdminMode(true);} else alert("Sai!")}} 
-                            className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase">
-                            Total: <span className={showTotal ? "text-neon" : "text-white/20"}>{showTotal ? revenue.toLocaleString() : '***'}</span>
-                        </button>
+                        <button onClick={() => prompt("Admin:") === ADMIN_PASS && setIsAdminMode(true)} className="opacity-20 text-[10px]">ADMIN</button>
                     </header>
 
-                    {activeTab === 'home' && (
-                        <div className="animate-up">
-                            <div className="bg-card rounded-2xl flex items-center px-4 py-4 mb-6">
-                                <i data-lucide="search" size="14" className="opacity-20 mr-3"></i>
-                                <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold uppercase tracking-widest" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                            </div>
-                            <div className="space-y-6">
-                                {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                                    <div key={c.id} className="bg-card rounded-[2.2rem] p-5 border border-white/5 shadow-2xl flex items-center gap-5">
-                                        <div className="w-20 h-24 bg-black rounded-2xl overflow-hidden border border-white/5 shrink-0" onClick={() => c.image && setViewingImage(c.image)}>
-                                            {c.image ? <img src={c.image} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-[7px] opacity-10 font-black">NO IMG</div>}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="text-[13px] font-black uppercase text-white/90 truncate">{c.name}</h3>
-                                            <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 italic tracking-wider truncate">{c.service}</p>
-                                            <div className="flex gap-3 mt-4">
-                                                <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="text-[9px] font-bold opacity-30 hover:opacity-100 uppercase tracking-widest">Sửa</button>
-                                                <button onClick={() => handleDelete(c.id, c.name)} className="text-[9px] font-bold text-red-500/40 hover:text-red-500 uppercase tracking-widest">Xoá</button>
-                                            </div>
-                                        </div>
-                                        <div className="text-[8px] opacity-20 font-bold rotate-90 shrink-0">{c.date}</div>
+                    {activeTab === 'home' ? (
+                        <div className="space-y-4">
+                            <input type="text" placeholder="TÌM TÊN KHÁCH..." className="w-full text-[11px] font-bold" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
+                                <div key={c.id} className="bg-card rounded-2xl p-4 flex items-center gap-4">
+                                    <div className="w-16 h-16 bg-black rounded-lg overflow-hidden shrink-0" onClick={() => c.image && setViewingImage(c.image)}>
+                                        {c.image && <img src={c.image} className="w-full h-full object-cover" />}
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'settings' && (
-                        <div className="animate-up space-y-6">
-                            <div className="bg-card p-6 rounded-3xl border border-white/5">
-                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-6 tracking-[0.2em]">QUYỀN TRUY CẬP</h2>
-                                <div className="space-y-5">
-                                    <input type="email" className="w-full p-4 text-[10px] font-bold outline-none" value={myEmail} 
-                                        onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
-                                    <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-28 ${!isAdminMode ? 'opacity-20 pointer-events-none' : ''}`} 
-                                        value={staffList} onChange={(e) => { if(isAdminMode) {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);} }} 
-                                        placeholder="Danh sách nhân viên (Duyệt bởi Admin)..." />
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-sm font-bold uppercase truncate">{c.name}</h3>
+                                        <p className="text-[10px] text-pink-500 truncate">{c.service}</p>
+                                    </div>
+                                    <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="p-2 opacity-30"><i data-lucide="edit-2" size="14"></i></button>
                                 </div>
-                            </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="bg-card p-5 rounded-2xl space-y-4">
+                            <p className="text-[10px] font-bold text-pink-500 uppercase">Thiết lập quyền</p>
+                            <input type="email" placeholder="Email của bạn..." className="w-full text-xs" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} />
+                            {isAdminMode && <textarea className="w-full text-xs h-32" value={staffList} onChange={e => {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);}} placeholder="Danh sách email nhân viên..." />}
                         </div>
                     )}
 
-                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
-                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="layout-grid" size="20"></i></button>
-                        <button onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
-                        <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="settings" size="20"></i></button>
+                    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[70%] bg-[#111] border border-white/10 flex justify-around p-3 rounded-full shadow-2xl">
+                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-pink-500' : 'opacity-20'}><i data-lucide="home" size="20"></i></button>
+                        <button onClick={() => {setEditingCustomer(null); setIsModalOpen(true);}} className="bg-pink-600 p-3 rounded-full -mt-10"><i data-lucide="plus" color="white" size="24"></i></button>
+                        <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'text-pink-500' : 'opacity-20'}><i data-lucide="user" size="20"></i></button>
                     </nav>
 
                     {isModalOpen && (
-                        <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[95vh] overflow-y-auto no-scrollbar shadow-2xl">
-                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <form onSubmit={handleSave} className="space-y-5">
-                                    <label className="w-24 h-32 bg-white/5 rounded-2xl border-2 border-dashed border-white/10 mx-auto flex items-center justify-center cursor-pointer overflow-hidden relative active:scale-95 transition-transform">
-                                        {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <i data-lucide="camera" size="20" className="opacity-10"></i>}
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                                    </label>
-                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                                    <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
-                                        <option value="Phun chân mày shading">Phun chân mày shading</option>
-                                        <option value="Phun chân mày shading-cover">Phun chân mày shading-cover</option>
-                                        <option value="Phun chân mày Sợi">Phun chân mày Sợi</option>
-                                        <option value="Phun chân mày Sợi-cover">Phun chân mày Sợi-cover</option>
-                                        <option value="Phun chân mày Mix">Phun chân mày Mix</option>
-                                        <option value="Phun chân mày Mix-cover">Phun chân mày Mix-cover</option>
-                                        <option value="Phun Môi cấp độ 1">Phun Môi cấp độ 1</option>
-                                        <option value="Phun Môi cđ2-cover">Phun Môi cđ2-cover</option>
-                                        <option value="Hút dung dịch môi">Hút dung dịch môi</option>
-                                        <option value="hút dung dịch mày">hút dung dịch mày</option>
-                                        <option value="xoá laser">xoá laser</option>
-                                    </select>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <input type="date" className="p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                                        <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                        <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center p-6 overflow-y-auto">
+                            <div className="bg-[#080808] w-full max-w-sm rounded-3xl p-6 border border-white/10">
+                                <form onSubmit={handleSave} className="space-y-4">
+                                    <div className="flex justify-center">
+                                        <label className="w-20 h-20 bg-white/5 rounded-full border border-dashed border-white/20 flex items-center justify-center overflow-hidden">
+                                            {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <i data-lucide="camera" className="opacity-20"></i>}
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
+                                        </label>
                                     </div>
-                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="LƯU Ý CÔNG THỨC MỰC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98] transition-all">LƯU HỒ SƠ</button>
+                                    <input required placeholder="TÊN KHÁCH..." className="w-full" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <select className="w-full" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                        <option value="Phun chân mày shading">Phun chân mày shading</option>
+                                        <option value="Phun Môi">Phun Môi</option>
+                                        <option value="Điêu khắc">Điêu khắc</option>
+                                        <option value="Xoá Laser">Xoá Laser</option>
+                                    </select>
+                                    <div className="flex gap-2">
+                                        <input type="date" className="w-1/2" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                                        <input type="number" placeholder="GIÁ..." className="w-1/2" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                                    </div>
+                                    <textarea placeholder="GHI CHÚ..." className="w-full h-20" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => setIsModalOpen(false)} className="w-1/2 p-3 opacity-50 uppercase text-[10px] font-bold">Hủy</button>
+                                        <button disabled={isSaving} className="w-1/2 bg-pink-600 p-3 rounded-xl uppercase text-[10px] font-bold">{isSaving ? 'Đang lưu...' : 'Lưu hồ sơ'}</button>
+                                    </div>
                                 </form>
                             </div>
                         </div>
                     )}
 
                     {viewingImage && (
-                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-4 animate-up" onClick={() => setViewingImage(null)}>
-                            <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-[2.5rem] border border-white/10" />
+                        <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-4" onClick={() => setViewingImage(null)}>
+                            <img src={viewingImage} className="max-w-full max-h-[80vh] rounded-2xl" />
                         </div>
                     )}
                 </div>
@@ -306,6 +220,7 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
+        setTimeout(() => window.lucide && window.lucide.createIcons(), 500);
     </script>
 </body>
 </html>
