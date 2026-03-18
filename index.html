@@ -3,12 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Official V22</title>
+    <title>Diệp Thảo PMU - Official V24</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@300;400;600;900&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #020202; color: #f2f2f2; overflow-x: hidden; }
@@ -21,20 +25,12 @@
         input, select, textarea { background: rgba(255,255,255,0.05) !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px; }
         .gate-title { letter-spacing: 0.5em; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
     </style>
-    
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-        window.FirebaseSDK = { initializeApp, getDatabase, ref, push, onValue, remove, update };
-    </script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { initializeApp, getDatabase, ref, push, onValue, remove, update } = window.FirebaseSDK;
-        const { useState, useEffect, useMemo } = React;
-
+        // CẤU HÌNH FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyCse8qtVm5M-20JL0HQ5BRQ3fN-z2zduuc",
             authDomain: "khoquanlydt.firebaseapp.com",
@@ -43,8 +39,13 @@
             appId: "1:192350251058:web:07a29c26c42dad95b9742b"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+        // Khởi tạo Firebase bản Compat
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        const { useState, useEffect, useMemo } = React;
         const ADMIN_PASS = "5252";
         const WEB_LOCK = "tingting";
 
@@ -62,13 +63,17 @@
             const [editingCustomer, setEditingCustomer] = useState(null);
             const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || 'diepthao94@gmail.com');
 
-            // ĐẢM BẢO HIỂN THỊ DỮ LIỆU
+            const [formData, setFormData] = useState({
+                name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0],
+                price: '', note: ''
+            });
+
+            // LẤY DỮ LIỆU (Cách viết truyền thống để đảm bảo luôn chạy)
             useEffect(() => {
                 if (!isUnlocked) return;
                 
-                // Lắng nghe khách hàng
-                const custRef = ref(db, 'customers');
-                const unsubscribeCust = onValue(custRef, (snapshot) => {
+                const custRef = db.ref('customers');
+                custRef.on('value', (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
@@ -78,42 +83,36 @@
                     }
                 });
 
-                // Lắng nghe lịch sử
-                const logRef = ref(db, 'logs');
-                const unsubscribeLog = onValue(logRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setLogs(Object.values(data).reverse().slice(0, 50));
-                    }
+                db.ref('logs').limitToLast(50).on('value', (snap) => {
+                    const data = snap.val();
+                    if (data) setLogs(Object.values(data).reverse());
                 });
 
-                return () => { unsubscribeCust(); unsubscribeLog(); };
+                return () => {
+                    custRef.off();
+                    db.ref('logs').off();
+                };
             }, [isUnlocked]);
 
             const addLog = (action) => {
-                push(ref(db, 'logs'), {
+                db.ref('logs').push({
                     user: myEmail,
                     action: action,
                     time: new Date().toLocaleString('vi-VN')
                 });
             };
 
-            const [formData, setFormData] = useState({
-                name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0],
-                price: '', note: ''
-            });
-
             const handleSave = (e) => {
                 e.preventDefault();
                 const data = { ...formData, price: Number(formData.price) || 0 };
                 
                 if (editingCustomer) {
-                    update(ref(db, `customers/${editingCustomer.id}`), data).then(() => {
+                    db.ref(`customers/${editingCustomer.id}`).update(data).then(() => {
                         addLog(`Sửa: ${data.name}`);
                         closeModal();
                     });
                 } else {
-                    push(ref(db, 'customers'), data).then(() => {
+                    db.ref('customers').push(data).then(() => {
                         addLog(`Thêm: ${data.name}`);
                         closeModal();
                     });
@@ -128,22 +127,10 @@
 
             const handleDelete = (id, name) => {
                 if (prompt("Mã xoá Admin:") === ADMIN_PASS) {
-                    remove(ref(db, `customers/${id}`));
+                    db.ref(`customers/${id}`).remove();
                     addLog(`Xoá: ${name}`);
                 }
             };
-
-            const reminders = useMemo(() => {
-                const today = new Date();
-                return customers.filter(c => {
-                    const diff = Math.floor((today - new Date(c.date)) / (1000 * 60 * 60 * 24));
-                    const s = c.service.toLowerCase();
-                    if ((s.includes("mày") || s.includes("hút")) && diff >= 30) return true;
-                    if (s.includes("môi") && diff >= 60) return true;
-                    if (s.includes("laser") && diff >= 15) return true;
-                    return false;
-                });
-            }, [customers]);
 
             const revenue = useMemo(() => {
                 const now = new Date();
@@ -164,7 +151,6 @@
 
             return (
                 <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto">
-                    {/* GIỮ NGUYÊN HEADER SANG TRỌNG */}
                     <header className="flex justify-between items-start mb-10 animate-up">
                         <div>
                             <div className="flex items-baseline gap-2">
@@ -179,17 +165,12 @@
                                 Total: <span className={showTotal ? "text-neon" : "text-white/20"}>{showTotal ? revenue.toLocaleString() : '***'}</span>
                             </button>
                             <div className="flex gap-2">
-                                <button onClick={() => setIsHistoryOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90">
-                                    <i data-lucide="history" size="14" className="text-pink-500"></i>
-                                </button>
-                                <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90">
-                                    <i data-lucide="shield-check" size="14" className="text-white/60"></i>
-                                </button>
+                                <button onClick={() => setIsHistoryOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90"><i data-lucide="history" size="14" className="text-pink-500"></i></button>
+                                <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90"><i data-lucide="shield-check" size="14" className="text-white/60"></i></button>
                             </div>
                         </div>
                     </header>
 
-                    {/* GIỮ NGUYÊN TAB TRANG CHỦ & TÌM KIẾM */}
                     {activeTab === 'home' && (
                         <div className="animate-up">
                             <div className="bg-card rounded-2xl flex items-center px-4 py-4 mb-6">
@@ -197,6 +178,7 @@
                                 <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold uppercase tracking-widest" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
                             <div className="space-y-4">
+                                {customers.length === 0 && <p className="text-center py-20 text-[10px] opacity-20 uppercase tracking-widest">Đang kết nối dữ liệu...</p>}
                                 {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
                                     <div key={c.id} className="bg-card rounded-[2rem] p-5 border border-white/5 flex justify-between items-center" onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}}>
                                         <div className="flex-1 min-w-0">
@@ -213,33 +195,25 @@
                         </div>
                     )}
 
-                    {/* GIỮ NGUYÊN TAB NHẮC LỊCH */}
                     {activeTab === 'reminder' && (
                         <div className="animate-up space-y-4">
                             <h2 className="text-[10px] font-black uppercase text-pink-500 tracking-[0.3em] mb-4">Lịch nhắc hôm nay</h2>
-                            {reminders.map(c => (
+                            {customers.filter(c => Math.floor((new Date() - new Date(c.date)) / (1000*60*60*24)) >= 30).map(c => (
                                 <div key={c.id} className="bg-card rounded-3xl p-5 border-l-2 border-pink-500 flex justify-between items-center">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm">{c.service.toLowerCase().includes("môi") ? "💋" : "🖋️"}</span>
-                                            <h3 className="text-[12px] font-black uppercase">{c.name}</h3>
-                                        </div>
-                                        <p className="text-[8px] opacity-50 uppercase mt-1">Làm ngày: {c.date}</p>
-                                    </div>
+                                    <div><h3 className="text-[12px] font-black uppercase">{c.name}</h3><p className="text-[8px] opacity-50 uppercase mt-1">Làm ngày: {c.date}</p></div>
                                     <span className="text-[9px] font-black text-pink-500 uppercase">Đến lịch!</span>
                                 </div>
                             ))}
                         </div>
                     )}
 
-                    {/* GIỮ NGUYÊN MENU NAVBAR DƯỚI ĐÁY */}
                     <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
                         <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="users" size="22"></i></button>
                         <button onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl active:scale-90"><i data-lucide="plus" color="white" size="26"></i></button>
                         <button onClick={() => setActiveTab('reminder')} className={activeTab === 'reminder' ? 'text-neon' : 'opacity-20'}><i data-lucide="calendar-clock" size="22"></i></button>
                     </nav>
 
-                    {/* GIỮ NGUYÊN MODAL FORM NHẬP LIỆU */}
+                    {/* MODAL NHẬP LIỆU */}
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
                             <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar">
@@ -265,34 +239,19 @@
                         </div>
                     )}
 
-                    {/* GIỮ NGUYÊN MODAL LỊCH SỬ & CÀI ĐẶT */}
+                    {/* LỊCH SỬ */}
                     {isHistoryOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[85vh] overflow-hidden flex flex-col">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[85vh] flex flex-col overflow-hidden">
                                 <button onClick={() => setIsHistoryOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
                                 <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Lịch sử</h2>
                                 <div className="overflow-y-auto no-scrollbar space-y-4">
                                     {logs.map((log, i) => (
                                         <div key={i} className="bg-white/5 p-4 rounded-2xl border-l border-pink-500/40">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="text-[10px] font-black text-white/90 uppercase">{log.action}</span>
-                                                <span className="text-[8px] opacity-30">{log.time}</span>
-                                            </div>
+                                            <div className="flex justify-between items-start mb-1"><span className="text-[10px] font-black uppercase">{log.action}</span><span className="text-[8px] opacity-30">{log.time}</span></div>
                                             <p className="text-[9px] text-pink-500/60 font-medium">{log.user}</p>
                                         </div>
                                     ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {isSettingsOpen && (
-                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up">
-                                <button onClick={() => setIsSettingsOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Hệ thống</h2>
-                                <div className="space-y-4">
-                                    <input className="w-full p-4 text-[10px] font-bold outline-none" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
                                 </div>
                             </div>
                         </div>
