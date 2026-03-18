@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - V17 USA Server</title>
+    <title>Diệp Thảo PMU - Official V19</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -11,24 +11,28 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@300;400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020202; color: #f2f2f2; }
+        body { font-family: 'Inter', sans-serif; background-color: #020202; color: #f2f2f2; overflow-x: hidden; }
         .font-luxury { font-family: 'Playfair Display', serif; }
         .bg-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.6); }
-        input, select, textarea { background: rgba(255,255,255,0.05) !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
         .animate-up { animation: fadeInUp 0.4s ease-out; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        input, select, textarea { background: rgba(255,255,255,0.05) !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px; }
+        .gate-title { letter-spacing: 0.5em; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
     </style>
+    
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-        window.FirebaseSDK = { initializeApp, getDatabase, ref, push, onValue, remove, update };
+        import { getDatabase, ref, push, onValue, remove, set, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        window.FirebaseSDK = { initializeApp, getDatabase, ref, push, onValue, remove, set, update };
     </script>
 </head>
 <body>
     <div id="root"></div>
+
     <script type="text/babel">
-        const { initializeApp, getDatabase, ref, push, onValue, remove, update } = window.FirebaseSDK;
+        const { initializeApp, getDatabase, ref, push, onValue, remove, set, update } = window.FirebaseSDK;
         const { useState, useEffect, useMemo } = React;
 
         const firebaseConfig = {
@@ -41,98 +45,268 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const ADMIN_PASS = "5252";
+        const WEB_LOCK = "tingting";
+        const ADMIN_EMAIL = "diepthao94@gmail.com";
 
         function App() {
             const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem('webUnlocked') === 'true');
+            const [activeTab, setActiveTab] = useState('home');
+            const [isAdminMode, setIsAdminMode] = useState(false);
+            const [showTotal, setShowTotal] = useState(false);
             const [customers, setCustomers] = useState([]);
+            const [logs, setLogs] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
             const [isModalOpen, setIsModalOpen] = useState(false);
-            const [formData, setFormData] = useState({ name: '', service: 'Phun Môi', date: new Date().toISOString().split('T')[0], note: '' });
+            const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+            const [editingCustomer, setEditingCustomer] = useState(null);
+            const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
+            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || ADMIN_EMAIL);
 
             useEffect(() => {
                 if (!isUnlocked) return;
-                // Kết nối thẳng tới nhánh 'customers'
+                
+                // Lấy dữ liệu khách hàng
                 const custRef = ref(db, 'customers');
-                const unsubscribe = onValue(custRef, (snapshot) => {
+                onValue(custRef, (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
-                        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                        setCustomers(list.sort((a,b) => b.date.localeCompare(a.date)).reverse());
-                    } else {
-                        setCustomers([]);
-                    }
-                }, (err) => {
-                    console.error("Lỗi kết nối:", err);
+                        setCustomers(Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse());
+                    } else setCustomers([]);
                 });
-                return () => unsubscribe();
+
+                // Lấy lịch sử Logs (Giới hạn 50 cái mới nhất)
+                const logRef = ref(db, 'logs');
+                onValue(logRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const logList = Object.keys(data).map(key => data[key]);
+                        setLogs(logList.reverse().slice(0, 50));
+                    } else setLogs([]);
+                });
             }, [isUnlocked]);
+
+            const addLog = (action) => {
+                push(ref(db, 'logs'), {
+                    user: myEmail || "Ẩn danh",
+                    action: action,
+                    time: new Date().toLocaleString('vi-VN')
+                });
+            };
+
+            const checkPermission = () => {
+                const currentEmail = (myEmail || "").trim().toLowerCase();
+                if (currentEmail === ADMIN_EMAIL.toLowerCase()) return true;
+                const authorizedList = staffList.split(',').map(e => e.trim().toLowerCase());
+                return authorizedList.includes(currentEmail) && currentEmail !== "";
+            };
+
+            const [formData, setFormData] = useState({
+                name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0],
+                price: '', note: ''
+            });
 
             const handleSave = (e) => {
                 e.preventDefault();
-                push(ref(db, 'customers'), formData)
-                    .then(() => {
-                        setIsModalOpen(false);
-                        setFormData({ name: '', service: 'Phun Môi', date: new Date().toISOString().split('T')[0], note: '' });
-                        alert("Đã lưu thành công!");
-                    })
-                    .catch(err => alert("Lỗi lưu: " + err.message));
+                if (!checkPermission()) { alert("Chưa cấp quyền Email!"); return; }
+                
+                const data = { ...formData, price: Number(formData.price) || 0 };
+                
+                if (editingCustomer) {
+                    update(ref(db, `customers/${editingCustomer.id}`), data)
+                        .then(() => {
+                            addLog(`Sửa: ${data.name}`);
+                            closeModal();
+                        });
+                } else {
+                    push(ref(db, 'customers'), data)
+                        .then(() => {
+                            addLog(`Thêm: ${data.name}`);
+                            closeModal();
+                        });
+                }
             };
+
+            const closeModal = () => {
+                setIsModalOpen(false);
+                setEditingCustomer(null);
+                setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '' });
+            };
+
+            const handleDelete = (id, name) => {
+                if (prompt("Mã xoá (Admin):") === ADMIN_PASS) {
+                    if (confirm(`Xoá hồ sơ: ${name}?`)) {
+                        remove(ref(db, `customers/${id}`));
+                        addLog(`Xoá: ${name}`);
+                    }
+                }
+            };
+
+            const reminders = useMemo(() => {
+                const today = new Date();
+                const getDiff = (d) => Math.floor((today - new Date(d)) / (1000 * 60 * 60 * 24));
+                return customers.filter(c => {
+                    const diff = getDiff(c.date);
+                    const s = (c.service || "").toLowerCase();
+                    if ((s.includes("mày") || s.includes("hút")) && diff >= 30) return true;
+                    if (s.includes("môi") && diff >= 60) return true;
+                    if (s.includes("laser") && diff >= 15) return true;
+                    return false;
+                });
+            }, [customers]);
+
+            const revenue = useMemo(() => {
+                const now = new Date();
+                return customers.filter(c => new Date(c.date).getMonth() === now.getMonth())
+                                .reduce((s, c) => s + (Number(c.price) || 0), 0);
+            }, [customers]);
 
             useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
 
             if (!isUnlocked) return (
                 <div className="h-screen bg-[#020202] flex flex-col items-center justify-center p-12">
-                    <h1 className="text-2xl font-black text-white mb-8 tracking-[0.3em] uppercase">DIEPTHAO PMU</h1>
-                    <input type="password" autoFocus placeholder="MẬT MÃ..." className="w-full max-w-xs p-4 text-center outline-none border-b border-pink-500 bg-transparent text-white"
-                        onChange={(e) => {if(e.target.value==='tingting'){setIsUnlocked(true);sessionStorage.setItem('webUnlocked','true');}}} />
+                    <h1 className="text-3xl font-black text-white gate-title mb-12 animate-up uppercase tracking-[0.4em]">DIEPTHAO PMU</h1>
+                    <input type="password" autoFocus placeholder="MẬT MÃ..." 
+                        className="w-full max-w-xs p-5 text-center tracking-[1em] font-bold text-lg outline-none"
+                        onChange={(e) => {if(e.target.value===WEB_LOCK){setIsUnlocked(true);sessionStorage.setItem('webUnlocked','true');}}} />
                 </div>
             );
 
             return (
-                <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto animate-up">
-                    <header className="mb-10">
-                        <h1 className="text-xl font-black text-white uppercase flex items-baseline gap-2">
-                            Hồ sơ <span className="text-neon font-luxury italic text-2xl">KHÁCH</span>
-                        </h1>
+                <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto">
+                    <header className="flex justify-between items-start mb-10 animate-up">
+                        <div>
+                            <div className="flex items-baseline gap-2">
+                                <h1 className="text-2xl font-black text-white">Diệp Thảo</h1>
+                                <span className="font-luxury italic text-2xl text-neon">PMU</span>
+                            </div>
+                            <p className="text-[7px] tracking-[0.55em] text-white/30 mt-1.5 uppercase border-t border-white/5 pt-1.5 font-medium">Phun Xăm Chuyên Nghiệp</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-3">
+                            <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdminMode(true);} else alert("Sai!")}} 
+                                className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase">
+                                Doanh thu: <span className={showTotal ? "text-neon" : "text-white/20"}>{showTotal ? revenue.toLocaleString() : '***'}</span>
+                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={() => setIsHistoryOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90">
+                                    <i data-lucide="history" size="14" className="text-pink-500"></i>
+                                </button>
+                                <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90">
+                                    <i data-lucide="shield-check" size="14" className="text-white/60"></i>
+                                </button>
+                            </div>
+                        </div>
                     </header>
 
-                    <div className="bg-card rounded-2xl flex items-center px-4 py-4 mb-8">
-                        <i data-lucide="search" size="14" className="opacity-20 mr-3"></i>
-                        <input type="text" placeholder="TÌM TÊN KHÁCH..." className="bg-transparent text-[10px] outline-none w-full font-bold uppercase text-white" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                    </div>
-
-                    <div className="space-y-4">
-                        {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                            <div key={c.id} className="bg-card rounded-[2rem] p-5 border border-white/5 flex justify-between items-center">
-                                <div className="flex-1">
-                                    <h3 className="text-[13px] font-black uppercase text-white">{c.name}</h3>
-                                    <p className="text-[9px] text-pink-500 font-bold uppercase italic">{c.service} - {c.date}</p>
-                                </div>
-                                <button onClick={() => {if(confirm("Xoá?")) remove(ref(db, `customers/${c.id}`))}} className="text-red-900/30 ml-4"><i data-lucide="trash-2" size="14"></i></button>
+                    {activeTab === 'home' && (
+                        <div className="animate-up">
+                            <div className="bg-card rounded-2xl flex items-center px-4 py-4 mb-6">
+                                <i data-lucide="search" size="14" className="opacity-20 mr-3"></i>
+                                <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold uppercase tracking-widest" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
-                        ))}
-                    </div>
+                            <div className="space-y-4">
+                                {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
+                                    <div key={c.id} className="bg-card rounded-[2rem] p-5 border border-white/5 flex justify-between items-center">
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[13px] font-black uppercase text-white/90 truncate">{c.name}</h3>
+                                            <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 italic">{c.service}</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-[8px] opacity-20 font-bold uppercase">{c.date}</div>
+                                            <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="text-white/20 hover:text-white"><i data-lucide="edit-3" size="14"></i></button>
+                                            <button onClick={() => handleDelete(c.id, c.name)} className="text-red-900/40 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                    <button onClick={() => setIsModalOpen(true)} className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-pink-600 w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl active:scale-90 z-50">
-                        <i data-lucide="plus" size="28"></i>
-                    </button>
+                    {activeTab === 'reminder' && (
+                        <div className="animate-up space-y-4">
+                            <h2 className="text-[10px] font-black uppercase text-pink-500 tracking-[0.3em] mb-4">Lịch nhắc tái khám</h2>
+                            {reminders.map(c => (
+                                <div key={c.id} className="bg-card rounded-3xl p-5 border-l-2 border-pink-500 flex justify-between items-center">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm">{c.service.toLowerCase().includes("môi") ? "💋" : "🖋️"}</span>
+                                            <h3 className="text-[12px] font-black uppercase">{c.name}</h3>
+                                        </div>
+                                        <p className="text-[8px] opacity-50 uppercase mt-1">Đã làm: {c.date}</p>
+                                    </div>
+                                    <span className="text-[9px] font-black text-pink-500 uppercase">Đến lịch!</span>
+                                </div>
+                            ))}
+                            {reminders.length === 0 && <p className="text-center text-[10px] opacity-20 py-20 uppercase">Chưa có khách cần nhắc</p>}
+                        </div>
+                    )}
 
+                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
+                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="users" size="22"></i></button>
+                        <button onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl active:scale-90"><i data-lucide="plus" color="white" size="26"></i></button>
+                        <button onClick={() => setActiveTab('reminder')} className={activeTab === 'reminder' ? 'text-neon' : 'opacity-20'}><i data-lucide="calendar-clock" size="22"></i></button>
+                    </nav>
+
+                    {/* MODAL LỊCH SỬ */}
+                    {isHistoryOpen && (
+                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[85vh] overflow-hidden flex flex-col">
+                                <button onClick={() => setIsHistoryOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Lịch sử hoạt động</h2>
+                                <div className="overflow-y-auto no-scrollbar space-y-4">
+                                    {logs.map((log, i) => (
+                                        <div key={i} className="bg-white/5 p-4 rounded-2xl border-l border-pink-500/40">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="text-[10px] font-black text-white/90 uppercase">{log.action}</span>
+                                                <span className="text-[8px] opacity-30">{log.time}</span>
+                                            </div>
+                                            <p className="text-[9px] text-pink-500/60 font-medium">{log.user}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL CÀI ĐẶT */}
+                    {isSettingsOpen && (
+                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up">
+                                <button onClick={() => setIsSettingsOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Cài đặt hệ thống</h2>
+                                <div className="space-y-4">
+                                    <label className="text-[9px] font-bold opacity-30 uppercase ml-2">Email cá nhân (Để ghi log)</label>
+                                    <input className="w-full p-4 text-[10px] font-bold outline-none" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
+                                    <label className="text-[9px] font-bold opacity-30 uppercase ml-2">Danh sách nhân viên (Admin chỉnh)</label>
+                                    <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-32 ${!isAdminMode ? 'opacity-20 pointer-events-none' : ''}`} value={staffList} onChange={(e) => isAdminMode && setStaffList(e.target.value)} placeholder="Email nhân viên, cách nhau bằng dấu phẩy..." />
+                                    {isAdminMode && <button onClick={() => {localStorage.setItem('staffList', staffList); alert("Đã lưu nhân viên!");}} className="w-full py-3 bg-white/5 rounded-xl text-[10px] font-black">LƯU DANH SÁCH</button>}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL THÊM KHÁCH */}
                     {isModalOpen && (
-                        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-6 backdrop-blur-sm">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[2.5rem] p-8 border border-white/10 relative">
-                                <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 opacity-20 text-white"><i data-lucide="x" size="24"></i></button>
-                                <form onSubmit={handleSave} className="space-y-4">
-                                    <h2 className="text-center font-luxury italic text-xl text-neon mb-4 font-bold">Lưu hồ sơ mới</h2>
-                                    <input required className="w-full p-4 text-[11px] font-bold uppercase outline-none" placeholder="TÊN KHÁCH..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                                    <select className="w-full p-4 text-[11px] font-bold outline-none uppercase" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
-                                        <option>Phun Môi</option>
-                                        <option>Phun chân mày shading</option>
-                                        <option>Phun chân mày Sợi</option>
-                                        <option>Hút dung dịch/Laser</option>
+                        <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar">
+                                <button onClick={closeModal} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
+                                <form onSubmit={handleSave} className="space-y-5 pt-4">
+                                    <h2 className="text-center font-luxury italic text-xl text-neon mb-4">{editingCustomer ? "Sửa hồ sơ" : "Hồ sơ mới"}</h2>
+                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" placeholder="TÊN KHÁCH..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                        <option value="Phun chân mày shading">Phun chân mày shading</option>
+                                        <option value="Phun chân mày Sợi">Phun chân mày Sợi</option>
+                                        <option value="Phun Môi">Phun Môi</option>
+                                        <option value="Hút dung dịch">Hút dung dịch</option>
+                                        <option value="Xoá Laser">Xoá Laser</option>
                                     </select>
-                                    <input type="date" className="w-full p-4 text-[11px] font-bold outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                                    <textarea className="w-full p-4 text-[11px] h-20 outline-none" placeholder="GHI CHÚ..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className="w-full bg-pink-600 text-white py-4 rounded-full text-[11px] font-black uppercase tracking-widest">LƯU VÀO KHO</button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <input type="date" className="p-4.5 rounded-2xl text-[11px] font-bold outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                                        <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                                    </div>
+                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 outline-none" placeholder="GHI CHÚ / CÔNG THỨC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98]">XÁC NHẬN LƯU</button>
                                 </form>
                             </div>
                         </div>
@@ -140,6 +314,7 @@
                 </div>
             );
         }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
