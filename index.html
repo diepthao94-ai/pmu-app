@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Pro V29</title>
+    <title>Diệp Thảo PMU - Official V30</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -29,7 +29,7 @@
         const { useState, useEffect, useMemo } = React;
         const WEB_LOCK = "tingting";
         const ADMIN_PASS = "5252";
-        const ADMIN_EMAIL_DEFAULT = "diepthao94@gmail.com";
+        const ADMIN_EMAIL_MASTER = "diepthao94@gmail.com";
 
         function App() {
             const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem('webUnlocked') === 'true');
@@ -43,17 +43,17 @@
             const [isAdminMode, setIsAdminMode] = useState(false);
 
             const [customers, setCustomers] = useState(() => {
-                const saved = localStorage.getItem('dt_cust_v29');
+                const saved = localStorage.getItem('dt_cust_v30');
                 return saved ? JSON.parse(saved) : [];
             });
             const [logs, setLogs] = useState(() => {
-                const saved = localStorage.getItem('dt_logs_v29');
+                const saved = localStorage.getItem('dt_logs_v30');
                 return saved ? JSON.parse(saved) : [];
             });
-            const [myEmail, setMyEmail] = useState(() => localStorage.getItem('dt_my_email_v29') || '');
+            const [myEmail, setMyEmail] = useState(() => localStorage.getItem('dt_my_email_v30') || '');
             const [authorizedEmails, setAuthorizedEmails] = useState(() => {
-                const saved = localStorage.getItem('dt_auth_emails_v29');
-                return saved ? JSON.parse(saved) : [ADMIN_EMAIL_DEFAULT];
+                const saved = localStorage.getItem('dt_auth_emails_v30');
+                return saved ? JSON.parse(saved) : [ADMIN_EMAIL_MASTER];
             });
 
             const [formData, setFormData] = useState({
@@ -63,33 +63,33 @@
 
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
-                localStorage.setItem('dt_cust_v29', JSON.stringify(customers));
-                localStorage.setItem('dt_logs_v29', JSON.stringify(logs));
-                localStorage.setItem('dt_my_email_v29', myEmail);
-                localStorage.setItem('dt_auth_emails_v29', JSON.stringify(authorizedEmails));
+                localStorage.setItem('dt_cust_v30', JSON.stringify(customers));
+                localStorage.setItem('dt_logs_v30', JSON.stringify(logs));
+                localStorage.setItem('dt_my_email_v30', myEmail);
+                localStorage.setItem('dt_auth_emails_v30', JSON.stringify(authorizedEmails));
             });
-
-            const addLog = (action) => {
-                const newLog = { user: myEmail || 'Ẩn danh', action, time: new Date().toLocaleString('vi-VN'), id: Date.now() };
-                setLogs([newLog, ...logs].slice(0, 50));
-            };
 
             const checkAccess = () => {
                 const currentEmail = (myEmail || '').trim().toLowerCase();
-                if (currentEmail === ADMIN_EMAIL_DEFAULT.toLowerCase()) return true;
+                // diepthao94@gmail.com luôn được tự do truy cập
+                if (currentEmail === ADMIN_EMAIL_MASTER.toLowerCase()) return true;
                 return authorizedEmails.map(e => e.trim().toLowerCase()).includes(currentEmail) && currentEmail !== '';
             };
 
             const handleSave = (e) => {
                 e.preventDefault();
-                if (!checkAccess()) { alert("Email của bạn chưa được cấp quyền!"); return; }
+                if (!checkAccess()) { 
+                    const ePrompt = prompt("Email của bạn chưa được cấp quyền! Vui lòng nhập Email chính xác:");
+                    if(ePrompt) setMyEmail(ePrompt);
+                    return; 
+                }
                 const data = { ...formData, price: Number(formData.price) || 0 };
                 if (editingCustomer) {
                     setCustomers(customers.map(c => c.id === editingCustomer.id ? { ...data, id: c.id } : c));
-                    addLog(`Sửa: ${data.name}`);
+                    setLogs([{ user: myEmail, action: `Sửa: ${data.name}`, time: new Date().toLocaleString('vi-VN'), id: Date.now() }, ...logs].slice(0, 50));
                 } else {
                     setCustomers([{ ...data, id: Date.now() }, ...customers]);
-                    addLog(`Thêm: ${data.name}`);
+                    setLogs([{ user: myEmail, action: `Thêm: ${data.name}`, time: new Date().toLocaleString('vi-VN'), id: Date.now() }, ...logs].slice(0, 50));
                 }
                 setIsModalOpen(false);
                 setEditingCustomer(null);
@@ -120,16 +120,14 @@
             return (
                 <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto animate-up">
                     <header className="flex justify-between items-start mb-10 border-b border-white/5 pb-6">
-                        <div>
+                        <div onClick={() => {const e = prompt("Xác nhận Email nhân viên:"); if(e) setMyEmail(e);}}>
                             <h1 className="text-2xl font-black text-white leading-none">Diệp Thảo <span className="font-luxury italic text-neon">PMU</span></h1>
                             <p className="text-[7px] tracking-[0.4em] text-white/30 mt-2 uppercase italic">Official Management</p>
-                            <button onClick={() => {const e = prompt("Nhập Email của bạn:"); if(e) setMyEmail(e);}} className="text-[7px] font-bold text-pink-500/80 mt-1 uppercase italic border-t border-white/5 pt-1 block text-left truncate max-w-[120px]">
-                                User: {myEmail || 'NHẬP EMAIL'}
-                            </button>
+                            {/* Đã ẩn dòng User ID theo yêu cầu để giao diện gọn hơn */}
                         </div>
                         <div className="flex flex-col items-end gap-2.5">
                             <button onClick={() => {if(prompt("Admin:")===ADMIN_PASS) setShowTotal(!showTotal)}} className="bg-white/5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase border border-white/10 active:scale-95">
-                                Doanh thu: <span className={showTotal ? "text-neon" : "text-white/10"}>{showTotal ? revenue.toLocaleString() : '***'} VNĐ</span>
+                                <span className={showTotal ? "text-neon" : "text-white/10"}>{showTotal ? revenue.toLocaleString() : '***'} VNĐ</span>
                             </button>
                             <div className="flex gap-2">
                                 <button onClick={() => setIsHistoryOpen(true)} className="p-2.5 bg-white/5 rounded-full border border-white/10 active:scale-90"><i data-lucide="history" size="14" className="text-white/60"></i></button>
@@ -153,7 +151,7 @@
                                         </div>
                                         <div className="text-right flex items-center gap-3">
                                             <p className="text-[8px] opacity-20 font-bold uppercase text-white">{c.date}</p>
-                                            <button onClick={(e) => {e.stopPropagation(); if(prompt("Mã Admin:")===ADMIN_PASS) { setCustomers(customers.filter(x => x.id !== c.id)); addLog(`Xoá: ${c.name}`); }}} className="text-red-900/40 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
+                                            <button onClick={(e) => {e.stopPropagation(); if(prompt("Mã Admin:")===ADMIN_PASS) { setCustomers(customers.filter(x => x.id !== c.id)); }}} className="text-red-900/40 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
                                         </div>
                                     </div>
                                 ))}
@@ -177,7 +175,7 @@
                         <button onClick={() => setActiveTab('reminder')} className={activeTab === 'reminder' ? 'text-neon' : 'opacity-20 text-white'}><i data-lucide="calendar-clock"></i></button>
                     </nav>
 
-                    {/* MODAL THÔNG TIN KHÁCH HÀNG (ĐÃ ĐỔI TÊN) */}
+                    {/* MODAL THÔNG TIN KHÁCH HÀNG */}
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6 backdrop-blur-sm">
                             <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar">
@@ -197,13 +195,13 @@
                                         <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none bg-transparent" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                                     </div>
                                     <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 outline-none text-white bg-transparent" placeholder="GHI CHÚ MỰC / CÔNG THỨC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className={`w-full ${checkAccess() ? 'bg-pink-600' : 'bg-white/10'} text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98]`}>LƯU THÔNG TIN KHÁCH HÀNG</button>
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98]">LƯU THÔNG TIN KHÁCH HÀNG</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* MODAL SETTINGS & HISTORY GIỮ NGUYÊN */}
+                    {/* MODAL SETTINGS & HISTORY */}
                     {isSettingsOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[300] flex items-center justify-center p-6 backdrop-blur-sm animate-up">
                             <div className="bg-[#080808] w-full max-w-md rounded-[2.5rem] p-8 border border-white/10 relative">
@@ -213,11 +211,11 @@
                                     <input type="password" placeholder="MÃ ADMIN..." className="w-full p-4 text-center text-white outline-none mb-4" onChange={(e) => {if(e.target.value===ADMIN_PASS) setIsAdminMode(true);}} />
                                 ) : (
                                     <div className="space-y-4">
-                                        <button onClick={() => {const email = prompt("Nhập Email:"); if(email && email.includes('@')) setAuthorizedEmails([...authorizedEmails, email.trim()]);}} className="w-full text-[9px] font-black text-pink-500 uppercase border border-pink-500/30 py-3 rounded-xl">+ THÊM NHÂN VIÊN</button>
+                                        <button onClick={() => {const email = prompt("Nhập Email nhân viên:"); if(email && email.includes('@')) setAuthorizedEmails([...authorizedEmails, email.trim()]);}} className="w-full text-[9px] font-black text-pink-500 uppercase border border-pink-500/30 py-3 rounded-xl">+ THÊM NHÂN VIÊN</button>
                                         <div className="max-h-40 overflow-y-auto no-scrollbar space-y-2">
                                             {authorizedEmails.map((email, i) => (
                                                 <div key={i} className="flex justify-between items-center bg-white/5 p-3 rounded-xl text-[10px] text-white/90">
-                                                    {email} {email !== ADMIN_EMAIL_DEFAULT && <button onClick={() => setAuthorizedEmails(authorizedEmails.filter(e => e !== email))} className="text-red-500/50">XOÁ</button>}
+                                                    {email} {email !== ADMIN_EMAIL_MASTER && <button onClick={() => setAuthorizedEmails(authorizedEmails.filter(e => e !== email))} className="text-red-500/50">XOÁ</button>}
                                                 </div>
                                             ))}
                                         </div>
@@ -232,11 +230,11 @@
                             <div className="bg-[#080808] w-full max-w-md rounded-[2.5rem] p-8 border border-white/10 relative max-h-[85vh] flex flex-col">
                                 <button onClick={() => setIsHistoryOpen(false)} className="absolute top-6 right-6 opacity-30 text-white"><i data-lucide="x"></i></button>
                                 <h2 className="text-center font-luxury italic text-xl text-neon mb-6 font-bold">Lịch sử hệ thống</h2>
-                                <div className="space-y-3 overflow-y-auto no-scrollbar flex-1">
+                                <div className="space-y-3 overflow-y-auto no-scrollbar flex-1 pr-2">
                                     {logs.map((l) => (
                                         <div key={l.id} className="border-l border-pink-500/30 pl-4 py-2 bg-white/5 rounded-xl text-[10px] text-white/90">
                                             <p className="font-bold uppercase">{l.action}</p>
-                                            <p className="text-[8px] text-pink-500/60">Bởi: {l.user}</p>
+                                            <p className="text-[8px] text-pink-500/60 uppercase italic">Bởi: {l.user || 'Admin'}</p>
                                             <p className="text-[8px] opacity-30 mt-1">{l.time}</p>
                                         </div>
                                     ))}
