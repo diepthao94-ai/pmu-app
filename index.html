@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Official V12 (Full Features)</title>
+    <title>Diệp Thảo PMU - Official V12</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -80,16 +80,14 @@
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                        setCustomers(list.reverse());
+                        setCustomers(list.sort((a,b) => b.date.localeCompare(a.date)));
                     } else setCustomers([]);
                 });
 
                 onValue(logRef, (snapshot) => {
                     const data = snapshot.val();
-                    if (data) {
-                        const list = Object.values(data);
-                        setLogs(list.reverse());
-                    } else setLogs([]);
+                    if (data) setLogs(Object.values(data).reverse());
+                    else setLogs([]);
                 });
             }, [isUnlocked]);
 
@@ -110,7 +108,7 @@
 
             const handleSave = (e) => {
                 e.preventDefault();
-                if (!checkPermission()) { alert("Chưa cấp quyền Email!"); return; }
+                if (!checkPermission()) { alert("Vào mục 🛡️ nhập Email chủ để cấp quyền!"); return; }
                 const data = { ...formData, price: Number(formData.price) || 0 };
                 
                 if (editingId) {
@@ -237,6 +235,7 @@
                         <button onClick={() => setActiveTab('reminder')} className={activeTab === 'reminder' ? 'text-neon' : 'opacity-20'}><i data-lucide="calendar-clock" size="22"></i></button>
                     </nav>
 
+                    {/* MODALS GIỮ NGUYÊN BỐ CỤC CŨ */}
                     {isHistoryOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
                             <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[85vh] overflow-hidden flex flex-col">
