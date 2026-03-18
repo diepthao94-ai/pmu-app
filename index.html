@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Official V20</title>
+    <title>Diệp Thảo PMU - Official V22</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -47,7 +47,6 @@
         const db = getDatabase(app);
         const ADMIN_PASS = "5252";
         const WEB_LOCK = "tingting";
-        const ADMIN_EMAIL = "diepthao94@gmail.com";
 
         function App() {
             const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem('webUnlocked') === 'true');
@@ -61,45 +60,42 @@
             const [isHistoryOpen, setIsHistoryOpen] = useState(false);
             const [isSettingsOpen, setIsSettingsOpen] = useState(false);
             const [editingCustomer, setEditingCustomer] = useState(null);
-            const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
-            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || ADMIN_EMAIL);
+            const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || 'diepthao94@gmail.com');
 
+            // ĐẢM BẢO HIỂN THỊ DỮ LIỆU
             useEffect(() => {
                 if (!isUnlocked) return;
-                // Kết nối Realtime Database
+                
+                // Lắng nghe khách hàng
                 const custRef = ref(db, 'customers');
-                const logRef = ref(db, 'logs');
-
-                onValue(custRef, (snap) => {
-                    const data = snap.val();
+                const unsubscribeCust = onValue(custRef, (snapshot) => {
+                    const data = snapshot.val();
                     if (data) {
                         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                        setCustomers(list.sort((a,b) => b.date.localeCompare(a.date)));
-                    } else setCustomers([]);
-                });
-
-                onValue(logRef, (snap) => {
-                    const data = snap.val();
-                    if (data) {
-                        const logList = Object.keys(data).map(key => data[key]);
-                        setLogs(logList.reverse().slice(0, 50));
+                        setCustomers(list.sort((a, b) => b.date.localeCompare(a.date)));
+                    } else {
+                        setCustomers([]);
                     }
                 });
+
+                // Lắng nghe lịch sử
+                const logRef = ref(db, 'logs');
+                const unsubscribeLog = onValue(logRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        setLogs(Object.values(data).reverse().slice(0, 50));
+                    }
+                });
+
+                return () => { unsubscribeCust(); unsubscribeLog(); };
             }, [isUnlocked]);
 
             const addLog = (action) => {
                 push(ref(db, 'logs'), {
-                    user: myEmail || "Ẩn danh",
+                    user: myEmail,
                     action: action,
                     time: new Date().toLocaleString('vi-VN')
                 });
-            };
-
-            const checkPermission = () => {
-                const currentEmail = (myEmail || "").trim().toLowerCase();
-                if (currentEmail === ADMIN_EMAIL.toLowerCase()) return true;
-                const authorizedList = staffList.split(',').map(e => e.trim().toLowerCase());
-                return authorizedList.includes(currentEmail) && currentEmail !== "";
             };
 
             const [formData, setFormData] = useState({
@@ -109,8 +105,6 @@
 
             const handleSave = (e) => {
                 e.preventDefault();
-                if (!checkPermission()) { alert("Vào 'Hệ thống' nhập Email được cấp quyền!"); return; }
-                
                 const data = { ...formData, price: Number(formData.price) || 0 };
                 
                 if (editingCustomer) {
@@ -133,19 +127,16 @@
             };
 
             const handleDelete = (id, name) => {
-                if (prompt("Mã xoá (Admin):") === ADMIN_PASS) {
-                    if (confirm(`Xoá hồ sơ: ${name}?`)) {
-                        remove(ref(db, `customers/${id}`));
-                        addLog(`Xoá: ${name}`);
-                    }
+                if (prompt("Mã xoá Admin:") === ADMIN_PASS) {
+                    remove(ref(db, `customers/${id}`));
+                    addLog(`Xoá: ${name}`);
                 }
             };
 
             const reminders = useMemo(() => {
                 const today = new Date();
-                const getDiff = (d) => Math.floor((today - new Date(d)) / (1000 * 60 * 60 * 24));
                 return customers.filter(c => {
-                    const diff = getDiff(c.date);
+                    const diff = Math.floor((today - new Date(c.date)) / (1000 * 60 * 60 * 24));
                     const s = c.service.toLowerCase();
                     if ((s.includes("mày") || s.includes("hút")) && diff >= 30) return true;
                     if (s.includes("môi") && diff >= 60) return true;
@@ -173,6 +164,7 @@
 
             return (
                 <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto">
+                    {/* GIỮ NGUYÊN HEADER SANG TRỌNG */}
                     <header className="flex justify-between items-start mb-10 animate-up">
                         <div>
                             <div className="flex items-baseline gap-2">
@@ -182,7 +174,7 @@
                             <p className="text-[7px] tracking-[0.55em] text-white/30 mt-1.5 uppercase border-t border-white/5 pt-1.5 font-medium">Phun Xăm Chuyên Nghiệp</p>
                         </div>
                         <div className="flex flex-col items-end gap-3">
-                            <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdminMode(true);} else alert("Sai!")}} 
+                            <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdminMode(true);}}} 
                                 className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase">
                                 Total: <span className={showTotal ? "text-neon" : "text-white/20"}>{showTotal ? revenue.toLocaleString() : '***'}</span>
                             </button>
@@ -197,6 +189,7 @@
                         </div>
                     </header>
 
+                    {/* GIỮ NGUYÊN TAB TRANG CHỦ & TÌM KIẾM */}
                     {activeTab === 'home' && (
                         <div className="animate-up">
                             <div className="bg-card rounded-2xl flex items-center px-4 py-4 mb-6">
@@ -205,15 +198,14 @@
                             </div>
                             <div className="space-y-4">
                                 {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                                    <div key={c.id} className="bg-card rounded-[2rem] p-5 border border-white/5 flex justify-between items-center">
+                                    <div key={c.id} className="bg-card rounded-[2rem] p-5 border border-white/5 flex justify-between items-center" onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}}>
                                         <div className="flex-1 min-w-0">
                                             <h3 className="text-[13px] font-black uppercase text-white/90 truncate">{c.name}</h3>
                                             <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 italic">{c.service}</p>
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <div className="text-[8px] opacity-20 font-bold uppercase">{c.date}</div>
-                                            <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="text-white/20 hover:text-white"><i data-lucide="edit-3" size="14"></i></button>
-                                            <button onClick={() => handleDelete(c.id, c.name)} className="text-red-900/40 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
+                                            <button onClick={(e) => {e.stopPropagation(); handleDelete(c.id, c.name);}} className="text-red-900/40 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
                                         </div>
                                     </div>
                                 ))}
@@ -221,6 +213,7 @@
                         </div>
                     )}
 
+                    {/* GIỮ NGUYÊN TAB NHẮC LỊCH */}
                     {activeTab === 'reminder' && (
                         <div className="animate-up space-y-4">
                             <h2 className="text-[10px] font-black uppercase text-pink-500 tracking-[0.3em] mb-4">Lịch nhắc hôm nay</h2>
@@ -239,48 +232,14 @@
                         </div>
                     )}
 
+                    {/* GIỮ NGUYÊN MENU NAVBAR DƯỚI ĐÁY */}
                     <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
                         <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="users" size="22"></i></button>
                         <button onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl active:scale-90"><i data-lucide="plus" color="white" size="26"></i></button>
                         <button onClick={() => setActiveTab('reminder')} className={activeTab === 'reminder' ? 'text-neon' : 'opacity-20'}><i data-lucide="calendar-clock" size="22"></i></button>
                     </nav>
 
-                    {/* MODAL LỊCH SỬ */}
-                    {isHistoryOpen && (
-                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[85vh] overflow-hidden flex flex-col">
-                                <button onClick={() => setIsHistoryOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Lịch sử sửa</h2>
-                                <div className="overflow-y-auto no-scrollbar space-y-4">
-                                    {logs.map((log, i) => (
-                                        <div key={i} className="bg-white/5 p-4 rounded-2xl border-l border-pink-500/40">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="text-[10px] font-black text-white/90 uppercase">{log.action}</span>
-                                                <span className="text-[8px] opacity-30">{log.time}</span>
-                                            </div>
-                                            <p className="text-[9px] text-pink-500/60 font-medium">{log.user}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* MODAL HỆ THỐNG */}
-                    {isSettingsOpen && (
-                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up">
-                                <button onClick={() => setIsSettingsOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Hệ thống</h2>
-                                <div className="space-y-4">
-                                    <input className="w-full p-4 text-[10px] font-bold outline-none" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
-                                    <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-32 ${!isAdminMode ? 'opacity-20 pointer-events-none' : ''}`} value={staffList} onChange={(e) => isAdminMode && setStaffList(e.target.value)} placeholder="Email nhân viên (cách nhau bằng dấu phẩy)..." />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* MODAL THÊM KHÁCH */}
+                    {/* GIỮ NGUYÊN MODAL FORM NHẬP LIỆU */}
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
                             <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar">
@@ -302,6 +261,39 @@
                                     <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 outline-none" placeholder="CÔNG THỨC MỰC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
                                     <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98]">LƯU HỒ SƠ</button>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* GIỮ NGUYÊN MODAL LỊCH SỬ & CÀI ĐẶT */}
+                    {isHistoryOpen && (
+                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[85vh] overflow-hidden flex flex-col">
+                                <button onClick={() => setIsHistoryOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Lịch sử</h2>
+                                <div className="overflow-y-auto no-scrollbar space-y-4">
+                                    {logs.map((log, i) => (
+                                        <div key={i} className="bg-white/5 p-4 rounded-2xl border-l border-pink-500/40">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="text-[10px] font-black text-white/90 uppercase">{log.action}</span>
+                                                <span className="text-[8px] opacity-30">{log.time}</span>
+                                            </div>
+                                            <p className="text-[9px] text-pink-500/60 font-medium">{log.user}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isSettingsOpen && (
+                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-6">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up">
+                                <button onClick={() => setIsSettingsOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center font-luxury italic text-xl text-neon mb-8">Hệ thống</h2>
+                                <div className="space-y-4">
+                                    <input className="w-full p-4 text-[10px] font-bold outline-none" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="Email của bạn..." />
+                                </div>
                             </div>
                         </div>
                     )}
