@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Luxury System</title>
+    <title>Diệp Thảo PMU - Luxury System V5</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@300;400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #030303; color: #f2f2f2; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: #020202; color: #f2f2f2; overflow-x: hidden; }
         .font-luxury { font-family: 'Playfair Display', serif; }
         .bg-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.6); }
@@ -49,6 +49,7 @@
         const appId = 'diep-thao-pmu-app';
         const ADMIN_PASS = "5252";
         const WEB_LOCK = "tingting";
+        const ADMIN_EMAIL = "diepthao94@gmail.com";
 
         function App() {
             const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem('webUnlocked') === 'true');
@@ -65,35 +66,41 @@
             const [viewingImage, setViewingImage] = useState(null);
             
             const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
-            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || 'diepthao94@gmail.com');
+            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || ADMIN_EMAIL);
 
             useEffect(() => {
                 if (!isUnlocked) return;
                 const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
                 const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
                 
-                onSnapshot(query(custRef, orderBy('date', 'desc')), (snap) => {
+                const unsubCust = onSnapshot(query(custRef, orderBy('date', 'desc')), (snap) => {
                     setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                     setLoading(false);
                 });
-                onSnapshot(query(logRef, orderBy('time', 'desc')), (snap) => {
+                const unsubLog = onSnapshot(query(logRef, orderBy('time', 'desc')), (snap) => {
                     setLogs(snap.docs.map(d => d.data()).slice(0, 30));
                 });
+                return () => { unsubCust(); unsubLog(); };
             }, [isUnlocked]);
 
             const triggerVibrate = () => { if (navigator.vibrate) navigator.vibrate(50); };
 
+            // HÀM KIỂM TRA QUYỀN (SỬA LỖI TRƯỚC ĐÓ)
             const checkPermission = () => {
-                const list = staffList.split(',').map(e => e.trim().toLowerCase());
-                if (list.includes(myEmail.toLowerCase()) || myEmail === 'diepthao94@gmail.com') return true;
-                alert("Email này chưa được cấp quyền truy cập dữ liệu.");
+                const currentEmail = (myEmail || "").trim().toLowerCase();
+                if (currentEmail === ADMIN_EMAIL.toLowerCase()) return true;
+                
+                const authorizedList = staffList.split(',').map(e => e.trim().toLowerCase());
+                if (authorizedList.includes(currentEmail) && currentEmail !== "") return true;
+                
+                alert("LỖI QUYỀN TRUY CẬP:\nEmail này chưa được Admin phê duyệt trong danh sách nhân viên.");
                 return false;
             };
 
             const addLog = async (action) => {
                 try {
                     const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-                    await addDoc(logRef, { user: myEmail || "Khách", action, time: new Date().toLocaleString('vi-VN') });
+                    await addDoc(logRef, { user: myEmail || "Ẩn danh", action, time: new Date().toLocaleString('vi-VN') });
                 } catch(e) {}
             };
 
@@ -102,9 +109,16 @@
                 price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: ''
             });
 
+            const resetForm = () => {
+                setEditingCustomer(null);
+                setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
+            };
+
             const handleSave = async (e) => {
                 e.preventDefault();
+                // Chỉ kiểm tra quyền khi nhấn nút Lưu để tránh treo Modal
                 if (!checkPermission()) return;
+                
                 triggerVibrate();
                 const data = { ...formData, price: Number(formData.price) || 0 };
                 const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
@@ -112,26 +126,25 @@
                 try {
                     if (editingCustomer) {
                         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), data);
-                        addLog(`Sửa khách: ${data.name}`);
+                        addLog(`Sửa hồ sơ: ${data.name}`);
                     } else {
                         await addDoc(custRef, data);
-                        addLog(`Thêm khách: ${data.name}`);
+                        addLog(`Thêm hồ sơ mới: ${data.name}`);
                     }
                     setIsModalOpen(false);
-                    setEditingCustomer(null);
-                    setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
-                } catch (err) { alert("Lỗi kết nối!"); }
+                    resetForm();
+                } catch (err) { alert("Lỗi kết nối cơ sở dữ liệu!"); }
             };
 
             const handleDelete = async (id, name) => {
-                const pass = prompt("Nhập mã Admin (5252) để xoá hồ sơ:");
+                const pass = prompt("XÁC MINH ADMIN:\nNhập mã 5252 để xoá hồ sơ này:");
                 if (pass === ADMIN_PASS) {
                     if (confirm(`Bạn có chắc muốn xoá hồ sơ: ${name}?`)) {
                         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
                         addLog(`Xoá khách: ${name}`);
                         triggerVibrate();
                     }
-                } else alert("Mã Admin không chính xác!");
+                } else alert("Mã không đúng!");
             };
 
             const handleUnlock = (e) => {
@@ -171,7 +184,7 @@
                             className="w-full p-5 text-center tracking-[1em] font-bold text-lg focus:border-pink-500/50 transition-all outline-none"
                             onChange={handleUnlock} />
                     </div>
-                    <p className="text-[7px] mt-10 opacity-20 uppercase tracking-[0.8em] font-medium">Hệ thống quản lý nội bộ</p>
+                    <p className="text-[7px] mt-10 opacity-20 uppercase tracking-[0.8em] font-medium">Authorized Personnel Only</p>
                 </div>
             );
 
@@ -235,29 +248,30 @@
                                 <h2 className="text-[10px] font-black uppercase text-pink-500 mb-6 flex items-center gap-2 tracking-[0.2em]"><i data-lucide="user-check" size="14"></i> QUYỀN TRUY CẬP</h2>
                                 <div className="space-y-5">
                                     <div>
-                                        <label className="text-[8px] opacity-30 uppercase font-black block mb-2 tracking-widest">Email đăng nhập thiết bị</label>
-                                        <input type="email" className="w-full p-4 text-[10px] font-bold outline-none border-white/5 focus:border-pink-500/30" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="email@gmail.com" />
+                                        <label className="text-[8px] opacity-30 uppercase font-black block mb-2 tracking-widest">Email đăng nhập thiết bị này</label>
+                                        <input type="email" className="w-full p-4 text-[10px] font-bold outline-none border-white/5 focus:border-pink-500/30" value={myEmail} 
+                                            onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="email-cua-ban@gmail.com" />
                                     </div>
                                     <div className="pt-5 border-t border-white/5">
                                         <div className="flex justify-between items-center mb-3">
-                                            <label className="text-[8px] opacity-30 uppercase font-black tracking-widest">Danh sách nhân viên (Admin)</label>
+                                            <label className="text-[8px] opacity-30 uppercase font-black tracking-widest">Danh sách Email nhân viên được duyệt</label>
                                             {!isAdminMode && <i data-lucide="lock" size="10" className="opacity-20"></i>}
                                         </div>
                                         <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-28 transition-all ${!isAdminMode ? 'opacity-20 select-none pointer-events-none' : ''}`} 
                                             value={staffList} 
                                             onChange={(e) => { if(isAdminMode) {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);} }} 
-                                            placeholder="diepthao94@gmail.com, nhanvien@gmail.com..." />
-                                        {!isAdminMode && <p className="text-[7px] mt-2 italic opacity-20 text-center uppercase tracking-widest">Mở khóa Total để sửa danh sách</p>}
+                                            placeholder="diepthao94@gmail.com, nhanvien1@gmail.com..." />
+                                        {!isAdminMode && <p className="text-[7px] mt-2 italic opacity-20 text-center uppercase tracking-widest">Mở khóa Total (5252) để sửa danh sách</p>}
                                     </div>
                                 </div>
                             </div>
                             <div className="bg-card p-6 rounded-3xl border border-white/5 shadow-xl">
                                 <h2 className="text-[10px] font-black uppercase text-white/20 mb-5 flex items-center gap-2 tracking-[0.2em]"><i data-lucide="history" size="14"></i> NHẬT KÝ HỆ THỐNG</h2>
-                                <div className="space-y-4 max-h-64 overflow-y-auto no-scrollbar">
+                                <div className="space-y-4 max-h-64 overflow-y-auto no-scrollbar text-white/40">
                                     {logs.map((l, i) => (
                                         <div key={i} className="text-[9px] border-b border-white/5 pb-3 last:border-0">
                                             <div className="flex justify-between"><span className="text-pink-400 font-black italic uppercase">{l.user.split('@')[0]}</span><span className="opacity-20 text-[7px]">{l.time}</span></div>
-                                            <p className="mt-1 opacity-50 font-medium tracking-tight uppercase">{l.action}</p>
+                                            <p className="mt-1 font-medium tracking-tight uppercase">{l.action}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -267,7 +281,7 @@
 
                     <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-[2.5rem] shadow-2xl">
                         <button onClick={() => {setActiveTab('home'); triggerVibrate();}} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="layout-grid" size="20"></i></button>
-                        <button onClick={() => { if(checkPermission()) { resetForm(); setIsModalOpen(true); triggerVibrate(); } }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#030303] shadow-2xl shadow-pink-600/30 active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
+                        <button onClick={() => { resetForm(); setIsModalOpen(true); triggerVibrate(); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#020202] shadow-2xl shadow-pink-600/30 active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
                         <button onClick={() => {setActiveTab('settings'); triggerVibrate();}} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="settings" size="20"></i></button>
                     </nav>
 
@@ -276,7 +290,7 @@
                         <div className="fixed inset-0 bg-black/98 z-[120] flex items-center justify-center p-6 animate-up">
                             <div className="bg-[#080808] w-full max-w-sm rounded-[3rem] p-8 border border-white/10 relative max-h-[80vh] overflow-y-auto no-scrollbar shadow-2xl">
                                 <button onClick={() => setIsNotifyOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="22"></i></button>
-                                <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400 mb-8 italic">LỊCH NHẮC DẶM</h2>
+                                <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400 mb-8 italic text-center">LỊCH NHẮC DẶM</h2>
                                 <div className="space-y-8">
                                     {[['MÔI (60 NGÀY)', reminders.moi, 'text-pink-500'], ['MÀY & HÚT (30 NGÀY)', reminders.may, 'text-blue-500'], ['XOÁ LASER (15 NGÀY)', reminders.laser, 'text-purple-500']].map(([title, list, color]) => list.length > 0 && (
                                         <div key={title}>
@@ -297,12 +311,12 @@
                         </div>
                     )}
 
-                    {/* Modal Thêm Khách */}
+                    {/* Modal Thêm Khách (Sửa lỗi Treo Modal) */}
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
                             <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[95vh] overflow-y-auto no-scrollbar shadow-2xl">
-                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <h2 className="text-center text-[10px] font-black uppercase tracking-[0.5em] text-pink-500 mb-10 italic">{editingCustomer ? 'Cập nhật hồ sơ' : 'Tạo hồ sơ mới'}</h2>
+                                <button onClick={() => {setIsModalOpen(false); resetForm();}} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center text-[10px] font-black uppercase tracking-[0.5em] text-pink-500 mb-10 italic">{editingCustomer ? 'CẬP NHẬT HỒ SƠ' : 'TẠO HỒ SƠ MỚI'}</h2>
                                 <form onSubmit={handleSave} className="space-y-4">
                                     <div className="grid grid-cols-3 gap-3">
                                         {['imgBefore', 'imgAfter', 'imgHealed'].map(f => (
@@ -316,7 +330,7 @@
                                             </label>
                                         ))}
                                     </div>
-                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold uppercase tracking-widest" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold uppercase tracking-widest outline-none" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                                     <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
                                         <option value="Phun chân mày shading">Phun chân mày shading</option>
                                         <option value="Phun chân mày shading-cover">Phun chân mày shading-cover</option>
@@ -334,8 +348,8 @@
                                         <input type="date" className="p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                                         <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                                     </div>
-                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="CÔNG THỨC MỰC, THÔNG SỐ..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-pink-600/30 active:scale-[0.98] transition-all">LƯU HỒ SƠ</button>
+                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="LƯU Ý CÔNG THỨC MỰC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-pink-600/30 active:scale-[0.98] transition-all">HOÀN TẤT & LƯU</button>
                                 </form>
                             </div>
                         </div>
