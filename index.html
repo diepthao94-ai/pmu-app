@@ -3,20 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - High-End Management</title>
+    <title>Diệp Thảo PMU - Luxury Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #050505; color: #f2f2f2; -webkit-tap-highlight-color: transparent; }
-        .bg-card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .text-neon { color: #ff69b4; text-shadow: 0 0 12px rgba(255, 105, 180, 0.5); }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@300;400;600;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #030303; color: #f2f2f2; -webkit-tap-highlight-color: transparent; }
+        .font-luxury { font-family: 'Playfair Display', serif; }
+        .bg-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.6); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .animate-up { animation: fadeInUp 0.3s ease-out; }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-up { animation: fadeInUp 0.4s ease-out; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        input, select, textarea { background: rgba(255,255,255,0.03) !important; color: white !important; border: 1px solid rgba(255,255,255,0.05) !important; }
     </style>
     
     <script type="module">
@@ -48,6 +50,7 @@
 
         function App() {
             const [activeTab, setActiveTab] = useState('home');
+            const [isAdmin, setIsAdmin] = useState(false);
             const [showTotal, setShowTotal] = useState(false);
             const [customers, setCustomers] = useState([]);
             const [logs, setLogs] = useState([]);
@@ -57,17 +60,18 @@
             const [editingCustomer, setEditingCustomer] = useState(null);
             const [loading, setLoading] = useState(true);
             const [viewingImage, setViewingImage] = useState(null);
-            const [staffEmail, setStaffEmail] = useState(localStorage.getItem('staffEmail') || '');
+            
+            // QUẢN LÝ EMAIL NHÂN VIÊN
+            const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
+            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || '');
 
             useEffect(() => {
                 const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
                 const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-                
                 onSnapshot(query(custRef, orderBy('date', 'desc')), (snap) => {
                     setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                     setLoading(false);
                 });
-
                 onSnapshot(query(logRef, orderBy('time', 'desc')), (snap) => {
                     setLogs(snap.docs.map(d => d.data()).slice(0, 30));
                 });
@@ -75,32 +79,31 @@
 
             const triggerVibrate = () => { if (navigator.vibrate) navigator.vibrate(50); };
 
+            const checkPermission = () => {
+                if (isAdmin) return true;
+                const list = staffList.split(',').map(e => e.trim().toLowerCase());
+                if (list.includes(myEmail.toLowerCase()) && myEmail !== '') return true;
+                alert("Email này chưa được cấp quyền thêm/sửa!");
+                return false;
+            };
+
             const addLog = async (action) => {
                 const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
                 await addDoc(logRef, {
-                    user: staffEmail || "Chưa định danh",
+                    user: myEmail || "Khách",
                     action: action,
                     time: new Date().toLocaleString('vi-VN')
                 });
             };
 
-            const handleTotalToggle = () => {
-                if (!showTotal) {
-                    const pass = prompt("Nhập mã Admin để xem Total:");
-                    if (pass === ADMIN_PASS) { setShowTotal(true); triggerVibrate(); }
-                    else alert("Mã sai!");
-                } else {
-                    setShowTotal(false);
-                }
-            };
-
             const [formData, setFormData] = useState({
-                name: '', service: 'Môi Collagen', date: new Date().toISOString().split('T')[0],
+                name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0],
                 price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: ''
             });
 
             const handleSave = async (e) => {
                 e.preventDefault();
+                if (!checkPermission()) return;
                 triggerVibrate();
                 const data = { ...formData, price: Number(formData.price) || 0 };
                 const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
@@ -114,16 +117,25 @@
                         const snap = await getDocs(q);
                         if (!snap.empty && !window.confirm("Khách trùng tên, vẫn lưu?")) return;
                         await addDoc(custRef, data);
-                        addLog(`Thêm khách mới: ${data.name}`);
+                        addLog(`Thêm khách: ${data.name}`);
                     }
                     setIsModalOpen(false);
-                    resetForm();
+                    setEditingCustomer(null);
+                    setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
                 } catch (err) { alert("Lỗi!"); }
             };
 
-            const resetForm = () => {
-                setEditingCustomer(null);
-                setFormData({ name: '', service: 'Môi Collagen', date: new Date().toISOString().split('T')[0], price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
+            const handleDelete = async (id, name) => {
+                if (!isAdmin) {
+                    const pass = prompt("Nhập mã Admin để Xoá:");
+                    if (pass !== ADMIN_PASS) { alert("Sai mã!"); return; }
+                    setIsAdmin(true);
+                }
+                if (confirm(`Xoá hồ sơ: ${name}?`)) {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
+                    addLog(`Xoá khách: ${name}`);
+                    triggerVibrate();
+                }
             };
 
             const reminders = useMemo(() => {
@@ -131,66 +143,70 @@
                 const getDiff = (d) => Math.floor((today - new Date(d)) / (1000 * 60 * 60 * 24));
                 return {
                     moi: customers.filter(c => c.service.includes("Môi") && getDiff(c.date) >= 60),
-                    may: customers.filter(c => (c.service.includes("mày") || c.service.includes("Hút")) && getDiff(c.date) >= 30),
-                    laser: customers.filter(c => c.service.includes("Laser") && getDiff(c.date) >= 15),
-                    totalCount: 0
+                    may: customers.filter(c => (c.service.toLowerCase().includes("mày") || c.service.includes("Hút")) && getDiff(c.date) >= 30),
+                    laser: customers.filter(c => c.service.includes("laser") && getDiff(c.date) >= 15),
                 };
             }, [customers]);
-            reminders.totalCount = reminders.moi.length + reminders.may.length + reminders.laser.length;
+            const totalReminders = reminders.moi.length + reminders.may.length + reminders.laser.length;
 
             const revenue = useMemo(() => {
-                const now = new Date();
-                return customers.filter(c => new Date(c.date).getMonth() === now.getMonth())
+                return customers.filter(c => new Date(c.date).getMonth() === new Date().getMonth())
                                 .reduce((s, c) => s + (c.price || 0), 0);
             }, [customers]);
 
             useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
 
-            if (loading) return <div className="h-screen flex items-center justify-center bg-black text-pink-500 font-black tracking-widest text-[10px] animate-pulse">DIỆP THẢO PMU</div>;
+            if (loading) return <div className="h-screen flex flex-col items-center justify-center bg-black">
+                <div className="text-white text-xl font-bold tracking-[0.3em]">DIỆP THẢO</div>
+                <div className="text-pink-500 font-luxury italic text-sm mt-1">Pmu</div>
+            </div>;
 
             return (
-                <div className="min-h-screen pb-24 pt-6 px-4 max-w-md mx-auto relative">
-                    {/* Top Bar */}
-                    <header className="flex justify-between items-start mb-6">
-                        <div>
-                            <h1 className="text-xl font-black italic text-neon tracking-tighter uppercase">Diệp Thảo</h1>
-                            <div className="flex items-center gap-2 mt-1 opacity-40">
-                                <i data-lucide="user" size="8"></i>
-                                <span className="text-[7px] font-bold uppercase tracking-widest">{staffEmail || 'Guest'}</span>
+                <div className="min-h-screen pb-24 pt-8 px-5 max-w-md mx-auto">
+                    {/* Header Sang Trọng */}
+                    <header className="flex justify-between items-start mb-10">
+                        <div className="animate-up">
+                            <div className="flex items-baseline gap-1.5">
+                                <h1 className="text-2xl font-black tracking-tighter text-white uppercase">Diệp Thảo</h1>
+                                <span className="font-luxury italic text-2xl text-neon">Pmu</span>
                             </div>
+                            <p className="text-[7px] tracking-[0.6em] font-light text-white/30 mt-1 uppercase w-full border-t border-white/5 pt-1">Phun Xăm Chuyên Nghiệp</p>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                            <button onClick={handleTotalToggle} className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-tighter active:scale-95 transition-all">
-                                Total: <span className={showTotal ? "text-pink-500" : "text-white/20"}>{showTotal ? revenue.toLocaleString() + 'đ' : '***'}</span>
+                        <div className="flex flex-col items-end gap-3">
+                            <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdmin(true);} else alert("Sai mã!")}} 
+                                className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-widest">
+                                Total: <span className={showTotal ? "text-neon" : "text-white/20"}>{showTotal ? revenue.toLocaleString() : '***'}</span>
                             </button>
-                            <button onClick={() => { setIsNotifyOpen(true); triggerVibrate(); }} className="relative bg-white/5 p-2.5 rounded-full border border-white/10 active:scale-90 transition-all">
-                                <i data-lucide="bell" size="16" className={reminders.totalCount > 0 ? "text-orange-400" : "text-white/20"}></i>
-                                {reminders.totalCount > 0 && <span className="absolute -top-1 -right-1 bg-orange-500 text-[7px] w-4 h-4 flex items-center justify-center rounded-full font-black border-2 border-black">{reminders.totalCount}</span>}
+                            <button onClick={() => setIsNotifyOpen(true)} className="relative bg-white/5 p-2.5 rounded-full border border-white/10">
+                                <i data-lucide="bell" size="16" className={totalReminders > 0 ? "text-orange-400" : "opacity-20"}></i>
+                                {totalReminders > 0 && <span className="absolute -top-1 -right-1 bg-orange-500 text-[7px] w-4 h-4 flex items-center justify-center rounded-full font-black border-2 border-black">{totalReminders}</span>}
                             </button>
                         </div>
                     </header>
 
-                    {/* Màn hình chính (Hồ sơ khách) */}
                     {activeTab === 'home' && (
                         <div className="animate-up">
-                            <div className="bg-card rounded-2xl flex items-center px-4 py-3 mb-5">
-                                <i data-lucide="search" size="14" className="opacity-20 mr-2"></i>
-                                <input type="text" placeholder="Tìm tên khách hàng..." className="bg-transparent text-xs outline-none w-full font-bold uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            <div className="bg-card rounded-2xl flex items-center px-4 py-3.5 mb-6 shadow-2xl">
+                                <i data-lucide="search" size="14" className="opacity-20 mr-3"></i>
+                                <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold tracking-widest uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
-                            <div className="space-y-4">
+                            <div className="space-y-5">
                                 {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                                    <div key={c.id} className="bg-card rounded-[1.8rem] p-5 border border-white/5 shadow-2xl">
-                                        <div className="flex justify-between items-start mb-4">
+                                    <div key={c.id} className="bg-card rounded-[2.2rem] p-6 border border-white/5 shadow-2xl relative overflow-hidden">
+                                        <div className="flex justify-between items-start mb-5">
                                             <div>
-                                                <h3 className="text-[12px] font-black uppercase italic tracking-tight">{c.name}</h3>
-                                                <p className="text-[8px] font-bold text-pink-500 uppercase mt-0.5 tracking-widest">{c.service} • {c.date}</p>
+                                                <h3 className="text-[13px] font-black uppercase tracking-tight text-white/90">{c.name}</h3>
+                                                <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 tracking-[0.1em]">{c.service} • {c.date}</p>
                                             </div>
-                                            <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="p-2.5 bg-white/5 rounded-xl active:bg-white/10 transition-colors"><i data-lucide="edit-3" size="12"></i></button>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="p-2.5 bg-white/5 rounded-xl border border-white/5"><i data-lucide="edit-3" size="12"></i></button>
+                                                <button onClick={() => handleDelete(c.id, c.name)} className="p-2.5 bg-red-500/5 text-red-500/50 rounded-xl border border-red-500/10"><i data-lucide="trash-2" size="12"></i></button>
+                                            </div>
                                         </div>
-                                        <div className="grid grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-3 gap-2.5">
                                             {['imgBefore', 'imgAfter', 'imgHealed'].map(i => (
-                                                <div key={i} className="aspect-[3/4] bg-black rounded-xl overflow-hidden border border-white/5 shadow-inner" onClick={() => c[i] && setViewingImage(c[i])}>
-                                                    {c[i] ? <img src={c[i]} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-[6px] opacity-10 font-black uppercase italic">{i.replace('img','')}</div>}
+                                                <div key={i} className="aspect-[3/4] bg-black rounded-2xl overflow-hidden border border-white/5 shadow-inner" onClick={() => c[i] && setViewingImage(c[i])}>
+                                                    {c[i] ? <img src={c[i]} className="w-full h-full object-cover opacity-90" /> : <div className="h-full flex items-center justify-center text-[6px] opacity-10 font-black uppercase tracking-widest">{i.replace('img','')}</div>}
                                                 </div>
                                             ))}
                                         </div>
@@ -200,25 +216,31 @@
                         </div>
                     )}
 
-                    {/* Màn hình Cài đặt (Logs & Staff) */}
                     {activeTab === 'settings' && (
                         <div className="animate-up space-y-6">
-                            <div className="bg-card p-5 rounded-2xl">
-                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-4 flex items-center gap-2"><i data-lucide="user-plus" size="14"></i> Quyền truy cập</h2>
-                                <p className="text-[8px] opacity-40 mb-3 italic">* Nhập Email nhân viên để lưu lịch sử chỉnh sửa trên máy này.</p>
-                                <div className="flex gap-2">
-                                    <input type="email" placeholder="Email nhân viên..." className="flex-1 bg-black/50 border border-white/10 p-3 rounded-xl text-[10px] outline-none font-bold" value={staffEmail} onChange={e => setStaffEmail(e.target.value)} />
-                                    <button onClick={() => { localStorage.setItem('staffEmail', staffEmail); alert("Đã cập nhật!"); triggerVibrate(); }} className="bg-pink-600 px-4 rounded-xl text-[9px] font-black uppercase">Lưu</button>
+                            <div className="bg-card p-6 rounded-3xl border border-white/5">
+                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-5 flex items-center gap-2 tracking-widest"><i data-lucide="shield-check" size="14"></i> Phân quyền thiết bị</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[8px] opacity-30 uppercase font-black mb-1.5 block">Email của bạn (Định danh)</label>
+                                        <input type="email" className="w-full p-4 rounded-xl text-[10px] font-bold outline-none" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="email@gmail.com..." />
+                                    </div>
+                                    {isAdmin && (
+                                        <div>
+                                            <label className="text-[8px] opacity-30 uppercase font-black mb-1.5 block">Danh sách Email nhân viên (Admin)</label>
+                                            <textarea className="w-full p-4 rounded-xl text-[10px] font-bold outline-none h-20" value={staffList} onChange={e => {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);}} placeholder="email1@gmail.com, email2@gmail.com..." />
+                                        </div>
+                                    )}
+                                    {!isAdmin && <button onClick={() => {if(prompt("Nhập mã Admin để cấu hình nhân viên:")===ADMIN_PASS) setIsAdmin(true)}} className="w-full py-3 border border-dashed border-white/10 rounded-xl text-[8px] uppercase font-bold opacity-40">Mở cấu hình Admin</button>}
                                 </div>
                             </div>
-
-                            <div className="bg-card p-5 rounded-2xl border border-white/5">
-                                <h2 className="text-[10px] font-black uppercase text-white/30 mb-4 flex items-center gap-2"><i data-lucide="activity" size="14"></i> Nhật ký hệ thống</h2>
-                                <div className="space-y-3 max-h-64 overflow-y-auto no-scrollbar">
+                            <div className="bg-card p-6 rounded-3xl border border-white/5">
+                                <h2 className="text-[10px] font-black uppercase text-white/30 mb-5 flex items-center gap-2 tracking-widest"><i data-lucide="history" size="14"></i> Nhật ký hoạt động</h2>
+                                <div className="space-y-4 max-h-60 overflow-y-auto no-scrollbar">
                                     {logs.map((l, i) => (
-                                        <div key={i} className="text-[9px] border-b border-white/5 pb-2 last:border-0">
-                                            <span className="text-pink-400 font-bold">{l.user}:</span> {l.action} 
-                                            <p className="opacity-20 italic mt-0.5">{l.time}</p>
+                                        <div key={i} className="text-[9px] border-b border-white/5 pb-3 last:border-0">
+                                            <div className="flex justify-between"><span className="text-pink-400 font-black italic">{l.user}</span><span className="opacity-20 text-[7px]">{l.time}</span></div>
+                                            <p className="mt-1 opacity-60 font-medium">{l.action}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -226,30 +248,29 @@
                         </div>
                     )}
 
-                    {/* Navigation Bar */}
-                    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[85%] bg-black/80 border border-white/10 flex justify-around items-center p-3 z-50 backdrop-blur-3xl rounded-full shadow-2xl">
-                        <button onClick={() => { setActiveTab('home'); triggerVibrate(); }} className={activeTab === 'home' ? 'text-neon scale-110' : 'opacity-20 transition-all'}><i data-lucide="layout-grid" size="20"></i></button>
-                        <button onClick={() => { resetForm(); setIsModalOpen(true); triggerVibrate(); }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-12 border-4 border-[#050505] shadow-xl shadow-pink-600/20 active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
-                        <button onClick={() => { setActiveTab('settings'); triggerVibrate(); }} className={activeTab === 'settings' ? 'text-neon scale-110' : 'opacity-20 transition-all'}><i data-lucide="settings" size="20"></i></button>
+                    {/* Nav Bar */}
+                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[85%] bg-black/60 border border-white/10 flex justify-around items-center p-3.5 z-50 backdrop-blur-3xl rounded-[2.5rem] shadow-2xl">
+                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="layers" size="20"></i></button>
+                        <button onClick={() => { if(checkPermission()) { resetForm(); setIsModalOpen(true); } }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#030303] shadow-xl shadow-pink-600/30 active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
+                        <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="menu" size="20"></i></button>
                     </nav>
 
-                    {/* Modal Nhắc lịch (Chuông) */}
+                    {/* Notification Modal */}
                     {isNotifyOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[120] flex items-center justify-center p-6 animate-up">
-                            <div className="bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] p-7 border border-white/10 relative max-h-[80vh] overflow-y-auto no-scrollbar shadow-[0_0_50px_rgba(249,115,22,0.1)]">
-                                <button onClick={() => setIsNotifyOpen(false)} className="absolute top-6 right-6 opacity-30"><i data-lucide="x" size="20"></i></button>
-                                <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-orange-400 mb-6 flex items-center gap-2"><i data-lucide="bell-ring" size="14"></i> Lịch nhắc dặm</h2>
-                                
-                                {reminders.totalCount === 0 ? <p className="text-[10px] opacity-20 text-center py-10 uppercase italic">Không có khách nào tới lịch</p> : (
-                                    <div className="space-y-6">
-                                        {[['Môi (60 ngày)', reminders.moi, 'text-pink-400'], ['Mày & Hút (30 ngày)', reminders.may, 'text-blue-400'], ['Laser (15 ngày)', reminders.laser, 'text-purple-400']].map(([title, list, color]) => list.length > 0 && (
+                            <div className="bg-[#080808] w-full max-w-sm rounded-[3rem] p-8 border border-white/10 relative max-h-[80vh] overflow-y-auto no-scrollbar">
+                                <button onClick={() => setIsNotifyOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="22"></i></button>
+                                <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400 mb-8 italic">Lịch Nhắc Dặm</h2>
+                                {totalReminders === 0 ? <p className="text-[10px] opacity-20 text-center py-20 italic uppercase tracking-widest">Hệ thống chưa ghi nhận lịch</p> : (
+                                    <div className="space-y-8">
+                                        {[['PHUN MÔI (60 NGÀY)', reminders.moi, 'text-pink-500'], ['CHÂN MÀY & HÚT (30 NGÀY)', reminders.may, 'text-blue-500'], ['XOÁ LASER (15 NGÀY)', reminders.laser, 'text-purple-500']].map(([title, list, color]) => list.length > 0 && (
                                             <div key={title}>
-                                                <p className={`text-[8px] font-black uppercase mb-3 ${color} tracking-widest`}>{title}</p>
-                                                <div className="space-y-2">
+                                                <p className={`text-[8px] font-black uppercase mb-4 ${color} tracking-[0.2em] border-l-2 border-current pl-2`}>{title}</p>
+                                                <div className="space-y-3">
                                                     {list.map(k => (
-                                                        <div key={k.id} className="flex justify-between items-center text-[10px] bg-white/5 p-3 rounded-xl border border-white/5">
-                                                            <span className="font-bold">{k.name} <span className="opacity-20 ml-1">({k.date})</span></span>
-                                                            <a href={`https://zalo.me/search?q=${k.name}`} target="_blank" className="p-2 bg-orange-500 rounded-full text-white"><i data-lucide="message-circle" size="10"></i></a>
+                                                        <div key={k.id} className="flex justify-between items-center text-[10px] bg-white/5 p-4 rounded-2xl border border-white/5 shadow-xl">
+                                                            <span className="font-bold uppercase tracking-tighter">{k.name} <span className="opacity-20 ml-1 text-[8px]">({k.date})</span></span>
+                                                            <a href={`https://zalo.me/search?q=${k.name}`} target="_blank" className="p-2 bg-orange-500 rounded-full text-white shadow-lg shadow-orange-500/20"><i data-lucide="send" size="10"></i></a>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -261,14 +282,14 @@
                         </div>
                     )}
 
-                    {/* Modal Thêm/Sửa Khách */}
+                    {/* Form Modal */}
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
-                            <div className="bg-[#0a0a0a] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
                                 <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
-                                <h2 className="text-center text-[11px] font-black uppercase tracking-[0.5em] text-pink-500 mb-10 italic">{editingCustomer ? 'Cập nhật' : 'Thêm hồ sơ'}</h2>
-                                <form onSubmit={handleSave} className="space-y-4">
-                                    <div className="grid grid-cols-3 gap-2">
+                                <h2 className="text-center text-[10px] font-black uppercase tracking-[0.5em] text-pink-500 mb-10 italic">{editingCustomer ? 'Cập nhật hồ sơ' : 'Tạo hồ sơ mới'}</h2>
+                                <form onSubmit={handleSave} className="space-y-5">
+                                    <div className="grid grid-cols-3 gap-3">
                                         {['imgBefore', 'imgAfter', 'imgHealed'].map(f => (
                                             <label key={f} className="aspect-[3/4] bg-white/5 rounded-2xl border-2 border-dashed border-white/5 flex items-center justify-center cursor-pointer overflow-hidden relative active:scale-95 transition-transform">
                                                 {formData[f] ? <img src={formData[f]} className="w-full h-full object-cover" /> : <i data-lucide="camera" size="18" className="opacity-10"></i>}
@@ -280,29 +301,33 @@
                                             </label>
                                         ))}
                                     </div>
-                                    <input required className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-xs font-bold outline-none uppercase placeholder:opacity-20" placeholder="Tên khách hàng..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                                    <select className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-xs font-bold appearance-none outline-none" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
-                                        <option value="Môi Collagen">Môi Collagen</option>
-                                        <option value="Chân mày Shading">Chân mày Shading</option>
-                                        <option value="Chân mày Hairstrokes">Chân mày Hairstrokes</option>
-                                        <option value="Phun mí mở tròng">Phun mí mở tròng</option>
-                                        <option value="Hút dung dịch">Hút dung dịch</option>
-                                        <option value="Laser Pico">Laser Pico</option>
+                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase tracking-widest" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                        <option value="Phun chân mày shading">Phun chân mày shading</option>
+                                        <option value="Phun chân mày shading-cover">Phun chân mày shading-cover</option>
+                                        <option value="Phun chân mày Sợi">Phun chân mày Sợi</option>
+                                        <option value="Phun chân mày Sợi-cover">Phun chân mày Sợi-cover</option>
+                                        <option value="Phun chân mày Mix">Phun chân mày Mix</option>
+                                        <option value="Phun chân mày Mix-cover">Phun chân mày Mix-cover</option>
+                                        <option value="Phun Môi cấp độ 1">Phun Môi cấp độ 1</option>
+                                        <option value="Phun Môi cđ2-cover">Phun Môi cđ2-cover</option>
+                                        <option value="Hút dung dịch môi">Hút dung dịch môi</option>
+                                        <option value="hút dung dịch mày">hút dung dịch mày</option>
+                                        <option value="xoá laser">xoá laser</option>
                                     </select>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input type="date" className="p-4 bg-white/5 border border-white/5 rounded-2xl text-xs font-bold uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                                        <input type="number" className="p-4 bg-white/5 border border-white/5 rounded-2xl text-xs font-bold text-pink-400 outline-none" placeholder="Giá..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <input type="date" className="p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                                        <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                                     </div>
-                                    <textarea className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-xs h-20 text-white/40 outline-none" placeholder="Ghi chú mực, thông số..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.3em] shadow-lg shadow-pink-600/30 active:scale-[0.98] transition-all">Hoàn tất & Đồng bộ</button>
+                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="CÔNG THỨC MỰC, LƯU Ý..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-pink-600/40 active:scale-[0.98] transition-all">LƯU HỒ SƠ</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
-                    {/* View Image */}
                     {viewingImage && (
-                        <div className="fixed inset-0 bg-black/98 z-[150] flex items-center justify-center p-4 animate-up" onClick={() => setViewingImage(null)}>
+                        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-4 animate-up" onClick={() => setViewingImage(null)}>
                             <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-3xl border border-white/10" />
                         </div>
                     )}
