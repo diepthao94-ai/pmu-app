@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Diệp Thảo PMU - Luxury Management</title>
+    <title>Diệp Thảo PMU - Luxury System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -11,14 +11,15 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,700&family=Inter:wght@300;400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #030303; color: #f2f2f2; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Inter', sans-serif; background-color: #030303; color: #f2f2f2; overflow-x: hidden; }
         .font-luxury { font-family: 'Playfair Display', serif; }
         .bg-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .text-neon { color: #ff69b4; text-shadow: 0 0 15px rgba(255, 105, 180, 0.6); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .animate-up { animation: fadeInUp 0.4s ease-out; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        input, select, textarea { background: rgba(255,255,255,0.03) !important; color: white !important; border: 1px solid rgba(255,255,255,0.05) !important; }
+        input, select, textarea { background: rgba(255,255,255,0.05) !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 12px; }
+        .gate-title { letter-spacing: 0.5em; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
     </style>
     
     <script type="module">
@@ -47,10 +48,12 @@
         const db = getFirestore(app);
         const appId = 'diep-thao-pmu-app';
         const ADMIN_PASS = "5252";
+        const WEB_LOCK = "tingting";
 
         function App() {
+            const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem('webUnlocked') === 'true');
             const [activeTab, setActiveTab] = useState('home');
-            const [isAdmin, setIsAdmin] = useState(false);
+            const [isAdminMode, setIsAdminMode] = useState(false);
             const [showTotal, setShowTotal] = useState(false);
             const [customers, setCustomers] = useState([]);
             const [logs, setLogs] = useState([]);
@@ -61,13 +64,14 @@
             const [loading, setLoading] = useState(true);
             const [viewingImage, setViewingImage] = useState(null);
             
-            // QUẢN LÝ EMAIL NHÂN VIÊN
             const [myEmail, setMyEmail] = useState(localStorage.getItem('myEmail') || '');
-            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || '');
+            const [staffList, setStaffList] = useState(localStorage.getItem('staffList') || 'diepthao94@gmail.com');
 
             useEffect(() => {
+                if (!isUnlocked) return;
                 const custRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
                 const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
+                
                 onSnapshot(query(custRef, orderBy('date', 'desc')), (snap) => {
                     setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                     setLoading(false);
@@ -75,25 +79,22 @@
                 onSnapshot(query(logRef, orderBy('time', 'desc')), (snap) => {
                     setLogs(snap.docs.map(d => d.data()).slice(0, 30));
                 });
-            }, []);
+            }, [isUnlocked]);
 
             const triggerVibrate = () => { if (navigator.vibrate) navigator.vibrate(50); };
 
             const checkPermission = () => {
-                if (isAdmin) return true;
                 const list = staffList.split(',').map(e => e.trim().toLowerCase());
-                if (list.includes(myEmail.toLowerCase()) && myEmail !== '') return true;
-                alert("Email này chưa được cấp quyền thêm/sửa!");
+                if (list.includes(myEmail.toLowerCase()) || myEmail === 'diepthao94@gmail.com') return true;
+                alert("Email này chưa được cấp quyền truy cập dữ liệu.");
                 return false;
             };
 
             const addLog = async (action) => {
-                const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-                await addDoc(logRef, {
-                    user: myEmail || "Khách",
-                    action: action,
-                    time: new Date().toLocaleString('vi-VN')
-                });
+                try {
+                    const logRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
+                    await addDoc(logRef, { user: myEmail || "Khách", action, time: new Date().toLocaleString('vi-VN') });
+                } catch(e) {}
             };
 
             const [formData, setFormData] = useState({
@@ -113,27 +114,30 @@
                         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), data);
                         addLog(`Sửa khách: ${data.name}`);
                     } else {
-                        const q = query(custRef, where("name", "==", data.name.trim()));
-                        const snap = await getDocs(q);
-                        if (!snap.empty && !window.confirm("Khách trùng tên, vẫn lưu?")) return;
                         await addDoc(custRef, data);
                         addLog(`Thêm khách: ${data.name}`);
                     }
                     setIsModalOpen(false);
                     setEditingCustomer(null);
                     setFormData({ name: '', service: 'Phun chân mày shading', date: new Date().toISOString().split('T')[0], price: '', note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
-                } catch (err) { alert("Lỗi!"); }
+                } catch (err) { alert("Lỗi kết nối!"); }
             };
 
             const handleDelete = async (id, name) => {
-                if (!isAdmin) {
-                    const pass = prompt("Nhập mã Admin để Xoá:");
-                    if (pass !== ADMIN_PASS) { alert("Sai mã!"); return; }
-                    setIsAdmin(true);
-                }
-                if (confirm(`Xoá hồ sơ: ${name}?`)) {
-                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
-                    addLog(`Xoá khách: ${name}`);
+                const pass = prompt("Nhập mã Admin (5252) để xoá hồ sơ:");
+                if (pass === ADMIN_PASS) {
+                    if (confirm(`Bạn có chắc muốn xoá hồ sơ: ${name}?`)) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id));
+                        addLog(`Xoá khách: ${name}`);
+                        triggerVibrate();
+                    }
+                } else alert("Mã Admin không chính xác!");
+            };
+
+            const handleUnlock = (e) => {
+                if (e.target.value === WEB_LOCK) {
+                    setIsUnlocked(true);
+                    sessionStorage.setItem('webUnlocked', 'true');
                     triggerVibrate();
                 }
             };
@@ -144,68 +148,77 @@
                 return {
                     moi: customers.filter(c => c.service.includes("Môi") && getDiff(c.date) >= 60),
                     may: customers.filter(c => (c.service.toLowerCase().includes("mày") || c.service.includes("Hút")) && getDiff(c.date) >= 30),
-                    laser: customers.filter(c => c.service.includes("laser") && getDiff(c.date) >= 15),
+                    laser: customers.filter(c => c.service.toLowerCase().includes("laser") && getDiff(c.date) >= 15),
                 };
             }, [customers]);
-            const totalReminders = reminders.moi.length + reminders.may.length + reminders.laser.length;
 
             const revenue = useMemo(() => {
-                return customers.filter(c => new Date(c.date).getMonth() === new Date().getMonth())
+                const now = new Date();
+                return customers.filter(c => new Date(c.date).getMonth() === now.getMonth())
                                 .reduce((s, c) => s + (c.price || 0), 0);
             }, [customers]);
 
             useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
 
-            if (loading) return <div className="h-screen flex flex-col items-center justify-center bg-black">
-                <div className="text-white text-xl font-bold tracking-[0.3em]">DIỆP THẢO</div>
-                <div className="text-pink-500 font-luxury italic text-sm mt-1">Pmu</div>
-            </div>;
+            if (!isUnlocked) return (
+                <div className="h-screen bg-[#020202] flex flex-col items-center justify-center p-12">
+                    <div className="mb-12 text-center animate-up">
+                        <h1 className="text-3xl font-black text-white gate-title mb-2">DIEPTHAO PMU</h1>
+                        <div className="w-12 h-[1px] bg-pink-600 mx-auto opacity-50"></div>
+                    </div>
+                    <div className="w-full max-w-xs relative group">
+                        <input type="password" autoFocus placeholder="••••••••" 
+                            className="w-full p-5 text-center tracking-[1em] font-bold text-lg focus:border-pink-500/50 transition-all outline-none"
+                            onChange={handleUnlock} />
+                    </div>
+                    <p className="text-[7px] mt-10 opacity-20 uppercase tracking-[0.8em] font-medium">Hệ thống quản lý nội bộ</p>
+                </div>
+            );
 
             return (
-                <div className="min-h-screen pb-24 pt-8 px-5 max-w-md mx-auto">
-                    {/* Header Sang Trọng */}
+                <div className="min-h-screen pb-24 pt-8 px-6 max-w-md mx-auto">
                     <header className="flex justify-between items-start mb-10">
                         <div className="animate-up">
-                            <div className="flex items-baseline gap-1.5">
-                                <h1 className="text-2xl font-black tracking-tighter text-white uppercase">Diệp Thảo</h1>
-                                <span className="font-luxury italic text-2xl text-neon">Pmu</span>
+                            <div className="flex items-baseline gap-2">
+                                <h1 className="text-2xl font-black text-white">Diệp Thảo</h1>
+                                <span className="font-luxury italic text-2xl text-neon">PMU</span>
                             </div>
-                            <p className="text-[7px] tracking-[0.6em] font-light text-white/30 mt-1 uppercase w-full border-t border-white/5 pt-1">Phun Xăm Chuyên Nghiệp</p>
+                            <p className="text-[7px] tracking-[0.55em] text-white/30 mt-1.5 uppercase border-t border-white/5 pt-1.5 font-medium">Phun Xăm Chuyên Nghiệp</p>
                         </div>
                         <div className="flex flex-col items-end gap-3">
-                            <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdmin(true);} else alert("Sai mã!")}} 
-                                className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-widest">
+                            <button onClick={() => {if(prompt("Mã Admin:")===ADMIN_PASS) {setShowTotal(!showTotal); setIsAdminMode(true);} else alert("Sai mã!")}} 
+                                className="bg-white/5 px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-tighter">
                                 Total: <span className={showTotal ? "text-neon" : "text-white/20"}>{showTotal ? revenue.toLocaleString() : '***'}</span>
                             </button>
-                            <button onClick={() => setIsNotifyOpen(true)} className="relative bg-white/5 p-2.5 rounded-full border border-white/10">
-                                <i data-lucide="bell" size="16" className={totalReminders > 0 ? "text-orange-400" : "opacity-20"}></i>
-                                {totalReminders > 0 && <span className="absolute -top-1 -right-1 bg-orange-500 text-[7px] w-4 h-4 flex items-center justify-center rounded-full font-black border-2 border-black">{totalReminders}</span>}
+                            <button onClick={() => setIsNotifyOpen(true)} className="relative bg-white/5 p-2.5 rounded-full border border-white/10 active:scale-90 transition-transform">
+                                <i data-lucide="bell" size="16" className="text-white/30"></i>
+                                {(reminders.moi.length + reminders.may.length + reminders.laser.length) > 0 && <span className="absolute -top-0.5 -right-0.5 bg-orange-500 w-3.5 h-3.5 rounded-full border-2 border-black"></span>}
                             </button>
                         </div>
                     </header>
 
                     {activeTab === 'home' && (
                         <div className="animate-up">
-                            <div className="bg-card rounded-2xl flex items-center px-4 py-3.5 mb-6 shadow-2xl">
+                            <div className="bg-card rounded-2xl flex items-center px-4 py-4 mb-6 shadow-xl">
                                 <i data-lucide="search" size="14" className="opacity-20 mr-3"></i>
-                                <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold tracking-widest uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <input type="text" placeholder="TÌM KIẾM KHÁCH HÀNG..." className="bg-transparent text-[10px] outline-none w-full font-bold uppercase tracking-widest placeholder:text-white/10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
-                            <div className="space-y-5">
+                            <div className="space-y-6">
                                 {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                                    <div key={c.id} className="bg-card rounded-[2.2rem] p-6 border border-white/5 shadow-2xl relative overflow-hidden">
+                                    <div key={c.id} className="bg-card rounded-[2.2rem] p-6 border border-white/5 shadow-2xl relative">
                                         <div className="flex justify-between items-start mb-5">
                                             <div>
-                                                <h3 className="text-[13px] font-black uppercase tracking-tight text-white/90">{c.name}</h3>
-                                                <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1 tracking-[0.1em]">{c.service} • {c.date}</p>
+                                                <h3 className="text-[13px] font-black uppercase text-white/90 tracking-tight">{c.name}</h3>
+                                                <p className="text-[8px] font-bold text-pink-500/80 uppercase mt-1.5 italic tracking-wider">{c.service} • {c.date}</p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="p-2.5 bg-white/5 rounded-xl border border-white/5"><i data-lucide="edit-3" size="12"></i></button>
-                                                <button onClick={() => handleDelete(c.id, c.name)} className="p-2.5 bg-red-500/5 text-red-500/50 rounded-xl border border-red-500/10"><i data-lucide="trash-2" size="12"></i></button>
+                                                <button onClick={() => {setEditingCustomer(c); setFormData(c); setIsModalOpen(true);}} className="p-2.5 bg-white/5 rounded-xl active:bg-white/10"><i data-lucide="edit-3" size="12"></i></button>
+                                                <button onClick={() => handleDelete(c.id, c.name)} className="p-2.5 bg-red-500/5 text-red-500/40 rounded-xl active:bg-red-500/10"><i data-lucide="trash-2" size="12"></i></button>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-3 gap-2.5">
                                             {['imgBefore', 'imgAfter', 'imgHealed'].map(i => (
-                                                <div key={i} className="aspect-[3/4] bg-black rounded-2xl overflow-hidden border border-white/5 shadow-inner" onClick={() => c[i] && setViewingImage(c[i])}>
+                                                <div key={i} className="aspect-[3/4] bg-black rounded-2xl overflow-hidden border border-white/5 shadow-inner active:scale-95 transition-transform" onClick={() => c[i] && setViewingImage(c[i])}>
                                                     {c[i] ? <img src={c[i]} className="w-full h-full object-cover opacity-90" /> : <div className="h-full flex items-center justify-center text-[6px] opacity-10 font-black uppercase tracking-widest">{i.replace('img','')}</div>}
                                                 </div>
                                             ))}
@@ -218,29 +231,33 @@
 
                     {activeTab === 'settings' && (
                         <div className="animate-up space-y-6">
-                            <div className="bg-card p-6 rounded-3xl border border-white/5">
-                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-5 flex items-center gap-2 tracking-widest"><i data-lucide="shield-check" size="14"></i> Phân quyền thiết bị</h2>
-                                <div className="space-y-4">
+                            <div className="bg-card p-6 rounded-3xl border border-white/5 shadow-xl">
+                                <h2 className="text-[10px] font-black uppercase text-pink-500 mb-6 flex items-center gap-2 tracking-[0.2em]"><i data-lucide="user-check" size="14"></i> QUYỀN TRUY CẬP</h2>
+                                <div className="space-y-5">
                                     <div>
-                                        <label className="text-[8px] opacity-30 uppercase font-black mb-1.5 block">Email của bạn (Định danh)</label>
-                                        <input type="email" className="w-full p-4 rounded-xl text-[10px] font-bold outline-none" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="email@gmail.com..." />
+                                        <label className="text-[8px] opacity-30 uppercase font-black block mb-2 tracking-widest">Email đăng nhập thiết bị</label>
+                                        <input type="email" className="w-full p-4 text-[10px] font-bold outline-none border-white/5 focus:border-pink-500/30" value={myEmail} onChange={e => {setMyEmail(e.target.value); localStorage.setItem('myEmail', e.target.value);}} placeholder="email@gmail.com" />
                                     </div>
-                                    {isAdmin && (
-                                        <div>
-                                            <label className="text-[8px] opacity-30 uppercase font-black mb-1.5 block">Danh sách Email nhân viên (Admin)</label>
-                                            <textarea className="w-full p-4 rounded-xl text-[10px] font-bold outline-none h-20" value={staffList} onChange={e => {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);}} placeholder="email1@gmail.com, email2@gmail.com..." />
+                                    <div className="pt-5 border-t border-white/5">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <label className="text-[8px] opacity-30 uppercase font-black tracking-widest">Danh sách nhân viên (Admin)</label>
+                                            {!isAdminMode && <i data-lucide="lock" size="10" className="opacity-20"></i>}
                                         </div>
-                                    )}
-                                    {!isAdmin && <button onClick={() => {if(prompt("Nhập mã Admin để cấu hình nhân viên:")===ADMIN_PASS) setIsAdmin(true)}} className="w-full py-3 border border-dashed border-white/10 rounded-xl text-[8px] uppercase font-bold opacity-40">Mở cấu hình Admin</button>}
+                                        <textarea className={`w-full p-4 text-[10px] font-bold outline-none h-28 transition-all ${!isAdminMode ? 'opacity-20 select-none pointer-events-none' : ''}`} 
+                                            value={staffList} 
+                                            onChange={(e) => { if(isAdminMode) {setStaffList(e.target.value); localStorage.setItem('staffList', e.target.value);} }} 
+                                            placeholder="diepthao94@gmail.com, nhanvien@gmail.com..." />
+                                        {!isAdminMode && <p className="text-[7px] mt-2 italic opacity-20 text-center uppercase tracking-widest">Mở khóa Total để sửa danh sách</p>}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="bg-card p-6 rounded-3xl border border-white/5">
-                                <h2 className="text-[10px] font-black uppercase text-white/30 mb-5 flex items-center gap-2 tracking-widest"><i data-lucide="history" size="14"></i> Nhật ký hoạt động</h2>
-                                <div className="space-y-4 max-h-60 overflow-y-auto no-scrollbar">
+                            <div className="bg-card p-6 rounded-3xl border border-white/5 shadow-xl">
+                                <h2 className="text-[10px] font-black uppercase text-white/20 mb-5 flex items-center gap-2 tracking-[0.2em]"><i data-lucide="history" size="14"></i> NHẬT KÝ HỆ THỐNG</h2>
+                                <div className="space-y-4 max-h-64 overflow-y-auto no-scrollbar">
                                     {logs.map((l, i) => (
                                         <div key={i} className="text-[9px] border-b border-white/5 pb-3 last:border-0">
-                                            <div className="flex justify-between"><span className="text-pink-400 font-black italic">{l.user}</span><span className="opacity-20 text-[7px]">{l.time}</span></div>
-                                            <p className="mt-1 opacity-60 font-medium">{l.action}</p>
+                                            <div className="flex justify-between"><span className="text-pink-400 font-black italic uppercase">{l.user.split('@')[0]}</span><span className="opacity-20 text-[7px]">{l.time}</span></div>
+                                            <p className="mt-1 opacity-50 font-medium tracking-tight uppercase">{l.action}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -248,47 +265,45 @@
                         </div>
                     )}
 
-                    {/* Nav Bar */}
-                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[85%] bg-black/60 border border-white/10 flex justify-around items-center p-3.5 z-50 backdrop-blur-3xl rounded-[2.5rem] shadow-2xl">
-                        <button onClick={() => setActiveTab('home')} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="layers" size="20"></i></button>
-                        <button onClick={() => { if(checkPermission()) { resetForm(); setIsModalOpen(true); } }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#030303] shadow-xl shadow-pink-600/30 active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
-                        <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="menu" size="20"></i></button>
+                    <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[80%] bg-black/60 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-[2.5rem] shadow-2xl">
+                        <button onClick={() => {setActiveTab('home'); triggerVibrate();}} className={activeTab === 'home' ? 'text-neon' : 'opacity-20'}><i data-lucide="layout-grid" size="20"></i></button>
+                        <button onClick={() => { if(checkPermission()) { resetForm(); setIsModalOpen(true); triggerVibrate(); } }} className="bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full -mt-14 border-4 border-[#030303] shadow-2xl shadow-pink-600/30 active:scale-90 transition-all"><i data-lucide="plus" color="white" size="24"></i></button>
+                        <button onClick={() => {setActiveTab('settings'); triggerVibrate();}} className={activeTab === 'settings' ? 'text-neon' : 'opacity-20'}><i data-lucide="settings" size="20"></i></button>
                     </nav>
 
-                    {/* Notification Modal */}
+                    {/* Modal Nhắc lịch */}
                     {isNotifyOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[120] flex items-center justify-center p-6 animate-up">
-                            <div className="bg-[#080808] w-full max-w-sm rounded-[3rem] p-8 border border-white/10 relative max-h-[80vh] overflow-y-auto no-scrollbar">
+                            <div className="bg-[#080808] w-full max-w-sm rounded-[3rem] p-8 border border-white/10 relative max-h-[80vh] overflow-y-auto no-scrollbar shadow-2xl">
                                 <button onClick={() => setIsNotifyOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="22"></i></button>
-                                <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400 mb-8 italic">Lịch Nhắc Dặm</h2>
-                                {totalReminders === 0 ? <p className="text-[10px] opacity-20 text-center py-20 italic uppercase tracking-widest">Hệ thống chưa ghi nhận lịch</p> : (
-                                    <div className="space-y-8">
-                                        {[['PHUN MÔI (60 NGÀY)', reminders.moi, 'text-pink-500'], ['CHÂN MÀY & HÚT (30 NGÀY)', reminders.may, 'text-blue-500'], ['XOÁ LASER (15 NGÀY)', reminders.laser, 'text-purple-500']].map(([title, list, color]) => list.length > 0 && (
-                                            <div key={title}>
-                                                <p className={`text-[8px] font-black uppercase mb-4 ${color} tracking-[0.2em] border-l-2 border-current pl-2`}>{title}</p>
-                                                <div className="space-y-3">
-                                                    {list.map(k => (
-                                                        <div key={k.id} className="flex justify-between items-center text-[10px] bg-white/5 p-4 rounded-2xl border border-white/5 shadow-xl">
-                                                            <span className="font-bold uppercase tracking-tighter">{k.name} <span className="opacity-20 ml-1 text-[8px]">({k.date})</span></span>
-                                                            <a href={`https://zalo.me/search?q=${k.name}`} target="_blank" className="p-2 bg-orange-500 rounded-full text-white shadow-lg shadow-orange-500/20"><i data-lucide="send" size="10"></i></a>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-orange-400 mb-8 italic">LỊCH NHẮC DẶM</h2>
+                                <div className="space-y-8">
+                                    {[['MÔI (60 NGÀY)', reminders.moi, 'text-pink-500'], ['MÀY & HÚT (30 NGÀY)', reminders.may, 'text-blue-500'], ['XOÁ LASER (15 NGÀY)', reminders.laser, 'text-purple-500']].map(([title, list, color]) => list.length > 0 && (
+                                        <div key={title}>
+                                            <p className={`text-[8px] font-black uppercase mb-4 ${color} tracking-[0.2em] border-l-2 border-current pl-2`}>{title}</p>
+                                            <div className="space-y-3">
+                                                {list.map(k => (
+                                                    <div key={k.id} className="flex justify-between items-center text-[10px] bg-white/5 p-4 rounded-2xl border border-white/5 shadow-xl">
+                                                        <span className="font-bold uppercase tracking-tighter">{k.name} <span className="opacity-20 ml-1 text-[8px]">({k.date})</span></span>
+                                                        <a href={`https://zalo.me/search?q=${k.name}`} target="_blank" className="p-2 bg-orange-500 rounded-full text-white shadow-lg shadow-orange-500/20"><i data-lucide="send" size="10"></i></a>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
+                                        </div>
+                                    ))}
+                                </div>
+                                {(reminders.moi.length + reminders.may.length + reminders.laser.length) === 0 && <p className="text-[10px] text-center opacity-20 py-20 uppercase font-black tracking-widest italic">Hệ thống chưa có khách tới lịch</p>}
                             </div>
                         </div>
                     )}
 
-                    {/* Form Modal */}
+                    {/* Modal Thêm Khách */}
                     {isModalOpen && (
                         <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-6">
-                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
+                            <div className="bg-[#080808] w-full max-w-md rounded-[3rem] p-8 border border-white/10 relative animate-up max-h-[95vh] overflow-y-auto no-scrollbar shadow-2xl">
                                 <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 opacity-20"><i data-lucide="x" size="24"></i></button>
                                 <h2 className="text-center text-[10px] font-black uppercase tracking-[0.5em] text-pink-500 mb-10 italic">{editingCustomer ? 'Cập nhật hồ sơ' : 'Tạo hồ sơ mới'}</h2>
-                                <form onSubmit={handleSave} className="space-y-5">
+                                <form onSubmit={handleSave} className="space-y-4">
                                     <div className="grid grid-cols-3 gap-3">
                                         {['imgBefore', 'imgAfter', 'imgHealed'].map(f => (
                                             <label key={f} className="aspect-[3/4] bg-white/5 rounded-2xl border-2 border-dashed border-white/5 flex items-center justify-center cursor-pointer overflow-hidden relative active:scale-95 transition-transform">
@@ -301,8 +316,8 @@
                                             </label>
                                         ))}
                                     </div>
-                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase tracking-widest" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                                    <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                    <input required className="w-full p-4.5 rounded-2xl text-[11px] font-bold uppercase tracking-widest" placeholder="TÊN KHÁCH HÀNG..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <select className="w-full p-4.5 rounded-2xl text-[11px] font-bold outline-none uppercase" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
                                         <option value="Phun chân mày shading">Phun chân mày shading</option>
                                         <option value="Phun chân mày shading-cover">Phun chân mày shading-cover</option>
                                         <option value="Phun chân mày Sợi">Phun chân mày Sợi</option>
@@ -319,8 +334,8 @@
                                         <input type="date" className="p-4.5 rounded-2xl text-[11px] font-bold uppercase outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                                         <input type="number" className="p-4.5 rounded-2xl text-[11px] font-bold text-pink-400 outline-none" placeholder="GIÁ TIỀN..." value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
                                     </div>
-                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="CÔNG THỨC MỰC, LƯU Ý..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
-                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-pink-600/40 active:scale-[0.98] transition-all">LƯU HỒ SƠ</button>
+                                    <textarea className="w-full p-4.5 rounded-2xl text-[11px] h-24 text-white/40 outline-none placeholder:italic" placeholder="CÔNG THỨC MỰC, THÔNG SỐ..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-pink-600/30 active:scale-[0.98] transition-all">LƯU HỒ SƠ</button>
                                 </form>
                             </div>
                         </div>
@@ -328,7 +343,7 @@
 
                     {viewingImage && (
                         <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-4 animate-up" onClick={() => setViewingImage(null)}>
-                            <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-3xl border border-white/10" />
+                            <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-[2.5rem] border border-white/10 shadow-2xl" />
                         </div>
                     )}
                 </div>
