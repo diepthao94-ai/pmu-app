@@ -56,8 +56,6 @@
             const [editingCustomer, setEditingCustomer] = useState(null);
             const [loading, setLoading] = useState(true);
             const [viewingImage, setViewingImage] = useState(null);
-            
-            // Lọc doanh thu theo tháng
             const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
 
             const [formData, setFormData] = useState({
@@ -116,22 +114,17 @@
 
             const exportToExcel = () => {
                 const currentMonthData = customers.filter(c => new Date(c.date).getMonth() + 1 === selectedMonth);
-                if (currentMonthData.length === 0) return alert("Tháng này chưa có dữ liệu để xuất!");
+                if (currentMonthData.length === 0) return alert("Tháng này chưa có dữ liệu!");
 
                 const dataForExcel = currentMonthData.map(c => ({
-                    "Ngày làm": c.date,
-                    "Tên khách hàng": c.name,
-                    "Dịch vụ": c.service,
-                    "Giá tiền": c.price,
-                    "Kỹ thuật viên": c.technician,
-                    "Công thức mực": c.inkColor,
-                    "Ghi chú": c.note
+                    "Ngày": c.date, "Tên": c.name, "Dịch vụ": c.service,
+                    "Giá tiền": c.price, "Thợ": c.technician, "Mực": c.inkColor, "Ghi chú": c.note
                 }));
 
                 const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
                 const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, `Doanh thu T${selectedMonth}`);
-                XLSX.writeFile(workbook, `Bao_Cao_DiepThao_T${selectedMonth}.xlsx`);
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Doanh Thu");
+                XLSX.writeFile(workbook, `Bao_Cao_T${selectedMonth}.xlsx`);
                 triggerVibrate();
             };
 
@@ -145,18 +138,126 @@
             }, [customers, searchTerm]);
 
             const monthlyTotal = useMemo(() => {
-                return customers
-                    .filter(c => new Date(c.date).getMonth() + 1 === selectedMonth)
-                    .reduce((sum, c) => sum + (Number(c.price) || 0), 0);
+                return customers.filter(c => new Date(c.date).getMonth() + 1 === selectedMonth)
+                                .reduce((sum, c) => sum + (Number(c.price) || 0), 0);
             }, [customers, selectedMonth]);
 
             useEffect(() => { if(window.lucide) window.lucide.createIcons(); });
 
-            if (loading) return <div className="h-screen flex items-center justify-center bg-black text-pink-500 font-bold text-[10px] tracking-[0.4em]">DIỆP THẢO PMU...</div>;
+            if (loading) return <div className="h-screen flex items-center justify-center bg-black text-pink-500 font-bold tracking-widest">ĐANG TẢI...</div>;
 
             return (
                 <div className="min-h-screen pb-32">
                     <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-black/80 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl">
                         <button onClick={() => setActiveTab('customers')} className={`flex flex-col items-center gap-1 ${activeTab === 'customers' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="users" size="20"></i><span className="text-[7px] font-bold uppercase">Khách</span></button>
                         <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="relative -mt-12 bg-gradient-to-tr from-pink-600 to-rose-400 p-5 rounded-full border-4 border-[#0d0d0d] active:scale-90 transition-transform"><i data-lucide="plus" color="white" size="24"></i></button>
-                        <button onClick={() => setActiveTab('stats')} className={`flex flex-col items-center gap-1 ${activeTab === 'stats' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="bar-chart-3" size="20"></i><span className="text-[7px] font-bold uppercase">Báo cáo
+                        <button onClick={() => setActiveTab('stats')} className={`flex flex-col items-center gap-1 ${activeTab === 'stats' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="bar-chart-3" size="20"></i><span className="text-[7px] font-bold uppercase">Báo cáo</span></button>
+                    </nav>
+
+                    <main className="max-w-xl mx-auto p-6 pt-10">
+                        <header className="mb-8 flex justify-between items-end">
+                            <h1 className="text-3xl font-light tracking-tighter italic">Diệp Thảo <span className="text-pink-300">PMU</span></h1>
+                            <div className="text-right">
+                                <p className="text-[8px] font-bold text-white/20 uppercase">Doanh thu T{selectedMonth}</p>
+                                <p className="text-lg font-mono font-bold text-pink-400">{monthlyTotal.toLocaleString()}đ</p>
+                            </div>
+                        </header>
+
+                        {activeTab === 'customers' ? (
+                            <div className="animate-fade">
+                                <div className="bg-white/5 border border-white/5 rounded-2xl flex items-center px-4 py-3 mb-8">
+                                    <i data-lucide="search" size="16" className="text-white/20 mr-3"></i>
+                                    <input type="text" placeholder="Tìm tên khách..." className="bg-transparent text-xs outline-none w-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                </div>
+                                <div className="grid gap-6">
+                                    {filteredCustomers.map(c => (
+                                        <div key={c.id} className="bg-white/[0.03] border border-white/5 rounded-[2.5rem] p-6 shadow-xl relative">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <h3 className="text-xs font-bold uppercase tracking-wider">{c.name}</h3>
+                                                    <p className="text-[8px] text-pink-400 uppercase font-black mt-1">{c.service} • {c.date}</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => { setEditingCustomer(c); setFormData(c); setIsModalOpen(true); }} className="p-2 bg-white/5 rounded-lg text-white/40"><i data-lucide="edit-3" size="14"></i></button>
+                                                    <button onClick={() => handleDelete(c.id, c.name)} className="p-2 bg-red-500/10 rounded-lg text-red-400/60"><i data-lucide="trash-2" size="14"></i></button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {['imgBefore', 'imgAfter', 'imgHealed'].map(img => (
+                                                    <div key={img} className="aspect-[3/4] bg-black/40 rounded-xl overflow-hidden border border-white/5" onClick={() => c[img] && setViewingImage(c[img])}>
+                                                        {c[img] ? <img src={c[img]} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center opacity-5 text-[6px] font-bold uppercase">{img.replace('img','')}</div>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="animate-fade space-y-6">
+                                <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/10">
+                                    <p className="text-[10px] font-bold text-white/20 uppercase mb-4 text-center tracking-widest">Tháng báo cáo</p>
+                                    <div className="flex flex-wrap justify-center gap-2 mb-8">
+                                        {[...Array(12)].map((_, i) => (
+                                            <button key={i} onClick={() => setSelectedMonth(i + 1)} className={`w-10 h-10 rounded-xl text-[10px] font-bold ${selectedMonth === i + 1 ? 'bg-pink-500 text-white' : 'bg-white/5 text-white/20'}`}>{i + 1}</button>
+                                        ))}
+                                    </div>
+                                    <button onClick={exportToExcel} className="w-full bg-white text-black py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                                        <i data-lucide="download" size="16"></i> Xuất File Excel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {isModalOpen && (
+                        <div className="fixed inset-0 bg-black/95 z-[100] p-4 flex items-center justify-center backdrop-blur-xl">
+                            <div className="bg-[#0a0a0a] w-full max-w-md rounded-[3rem] p-8 border border-white/10 max-h-[90vh] overflow-y-auto no-scrollbar relative shadow-2xl">
+                                <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 text-white/20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center text-[10px] font-black uppercase tracking-[0.3em] text-pink-400 mb-8">{editingCustomer ? 'Cập nhật' : 'Thêm mới'}</h2>
+                                <form onSubmit={handleSave} className="space-y-4">
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {['imgBefore', 'imgAfter', 'imgHealed'].map(f => (
+                                            <label key={f} className="aspect-[3/4] bg-white/5 rounded-2xl border border-white/5 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative">
+                                                {formData[f] ? <img src={formData[f]} className="w-full h-full object-cover" /> : <i data-lucide="camera" size="16" className="opacity-10"></i>}
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                                                    const reader = new FileReader();
+                                                    reader.onload = () => setFormData({...formData, [f]: reader.result});
+                                                    if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+                                                }} />
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <input required className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[11px] font-bold outline-none" placeholder="HỌ TÊN..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <select className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[11px] font-bold text-white/50" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                        <option value="">-- CHỌN DỊCH VỤ --</option>
+                                        <option value="Chân mày Shading">Chân mày Shading</option>
+                                        <option value="Chân mày Hairstrokes">Chân mày Hairstrokes</option>
+                                        <option value="Phun môi Collagen">Phun môi Collagen</option>
+                                        <option value="Laser / Hút dung dịch">Laser / Hút dung dịch</option>
+                                    </select>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input type="date" className="p-4 bg-white/5 border border-white/5 rounded-2xl text-[11px] font-bold text-white" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                                        <input type="number" className="p-4 bg-white/5 border border-white/5 rounded-2xl text-[11px] font-bold text-pink-400" placeholder="GIÁ TIỀN" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                                    </div>
+                                    <textarea className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[11px] h-24 text-white/50" placeholder="GHI CHÚ MỰC, CÔNG THỨC..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    <button className="w-full bg-pink-600 text-white py-5 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em]">LƯU & ĐỒNG BỘ</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {viewingImage && (
+                        <div className="fixed inset-0 bg-black/98 z-[110] flex items-center justify-center p-6" onClick={() => setViewingImage(null)}>
+                            <img src={viewingImage} className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl" />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
