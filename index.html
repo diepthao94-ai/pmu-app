@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Diệp Thảo PMU - Quản Lý Chuyên Nghiệp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0d0d0d; color: white; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .animate-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        window.FirebaseSDK = { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc, limit, getAuth, signInAnonymously, onAuthStateChanged };
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { initializeApp, getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc, limit, getAuth, signInAnonymously, onAuthStateChanged } = window.FirebaseSDK;
+        const { useState, useEffect, useMemo } = React;
+
+        // CẤU HÌNH FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyCagpAIdIzUWidSC7liNvQVFHr-hpZZEbQ",
+            authDomain: "quanlydiepthao.firebaseapp.com",
+            projectId: "quanlydiepthao",
+            storageBucket: "quanlydiepthao.firebasestorage.app",
+            messagingSenderId: "2061214359",
+            appId: "1:2061214359:web:b845ac95d41b284aa1ffd2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'diep-thao-pmu-app';
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [accessList, setAccessList] = useState([]);
+            const [activeTab, setActiveTab] = useState('customers');
+            const [customers, setCustomers] = useState([]);
+            const [activities, setActivities] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingCustomer, setEditingCustomer] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [viewingImage, setViewingImage] = useState(null);
+            const [newEmail, setNewEmail] = useState('');
+            const [showRevenue, setShowRevenue] = useState(false);
+            const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+            const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+            const [formData, setFormData] = useState({
+                name: '', service: '', inkColor: '', technician: 'Diệp Thảo',
+                price: '', date: new Date().toISOString().split('T')[0], note: '',
+                imgBefore: '', imgAfter: '', imgHealed: ''
+            });
+
+            const isAdmin = useMemo(() => {
+                if (!user) return false;
+                const record = accessList.find(a => a.email?.toLowerCase() === user.email?.toLowerCase());
+                return record?.role === 'admin' || !user.email; 
+            }, [user, accessList]);
+
+            useEffect(() => {
+                signInAnonymously(auth).catch(console.error);
+                return onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    if (u) loadData();
+                });
+            }, []);
+
+            const loadData = () => {
+                const baseRoute = ['artifacts', appId, 'public', 'data'];
+                
+                onSnapshot(query(collection(db, ...baseRoute, 'customers'), orderBy('date', 'desc')), (snap) => {
+                    setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                    setLoading(false);
+                });
+
+                onSnapshot(query(collection(db, ...baseRoute, 'activityLogs'), orderBy('timestamp', 'desc'), limit(50)), (snap) => {
+                    setActivities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                });
+
+                onSnapshot(collection(db, ...baseRoute, 'accessList'), (snap) => {
+                    setAccessList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                });
+            };
+
+            const logActivity = async (action, details) => {
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'activityLogs'), {
+                        action, details, userId: user.uid,
+                        userName: user.email || "Chủ tiệm",
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (e) { console.error(e); }
+            };
+
+            const handleSaveCustomer = async (e) => {
+                e.preventDefault();
+                try {
+                    const data = { ...formData, price: Number(formData.price) || 0 };
+                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
+                    if (editingCustomer) {
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', editingCustomer.id), { ...data, updatedAt: new Date().toISOString() });
+                        await logActivity("Cập nhật hồ sơ", data.name);
+                    } else {
+                        await addDoc(colRef, { ...data, createdAt: new Date().toISOString() });
+                        await logActivity("Thêm mới khách", data.name);
+                    }
+                    setIsModalOpen(false);
+                    resetForm();
+                } catch (err) { alert(err.message); }
+            };
+
+            const resetForm = () => {
+                setEditingCustomer(null);
+                setFormData({ name: '', service: '', inkColor: '', technician: 'Diệp Thảo', price: '', date: new Date().toISOString().split('T')[0], note: '', imgBefore: '', imgAfter: '', imgHealed: '' });
+            };
+
+            const reminderList = useMemo(() => {
+                const today = new Date();
+                return customers.filter(c => {
+                    const diffDays = Math.floor((today - new Date(c.date)) / (1000 * 60 * 60 * 24));
+                    const svc = (c.service || "").toLowerCase();
+                    if (svc.includes('laser')) return diffDays >= 15 && diffDays <= 20;
+                    if (svc.includes('mày') || svc.includes('dịch')) return diffDays >= 30 && diffDays <= 40;
+                    if (svc.includes('môi')) return diffDays >= 60 && diffDays <= 75;
+                    return false;
+                });
+            }, [customers]);
+
+            const monthlyCustomers = useMemo(() => {
+                return customers.filter(c => {
+                    const d = new Date(c.date);
+                    return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear && 
+                           c.name.toLowerCase().includes(searchTerm.toLowerCase());
+                });
+            }, [customers, selectedMonth, selectedYear, searchTerm]);
+
+            const totalRevenue = useMemo(() => monthlyCustomers.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0), [monthlyCustomers]);
+
+            useEffect(() => { lucide.createIcons(); }, [activeTab, isModalOpen, loading, viewingImage]);
+
+            if (loading) return (
+                <div className="h-screen flex flex-col items-center justify-center bg-[#0a0a0a]">
+                    <div className="w-10 h-10 border-2 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="text-[10px] font-bold tracking-[0.3em] text-pink-500/50 uppercase">Khởi tạo hệ thống...</p>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-[#0d0d0d] text-white pb-32 overflow-x-hidden">
+                    {/* UI GỐC CỦA BẠN */}
+                    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-md bg-black/80 border border-white/10 flex justify-around items-center p-4 z-50 backdrop-blur-3xl rounded-[2.5rem] shadow-2xl">
+                        <button onClick={() => setActiveTab('customers')} className={`flex flex-col items-center gap-1 ${activeTab === 'customers' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="users" size="20"></i><span className="text-[7px] font-bold uppercase">Hồ sơ</span></button>
+                        <button onClick={() => setActiveTab('reminders')} className={`flex flex-col items-center gap-1 relative ${activeTab === 'reminders' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="bell" size="20"></i>{reminderList.length > 0 && <span className="absolute top-0 right-1 w-2 h-2 bg-pink-500 rounded-full animate-pulse"></span>}<span className="text-[7px] font-bold uppercase">Lịch dặm</span></button>
+                        <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="relative -mt-12 bg-gradient-to-tr from-pink-600 to-rose-400 p-4 rounded-full border-4 border-[#0d0d0d] shadow-lg shadow-pink-500/30"><i data-lucide="plus" color="white"></i></button>
+                        <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1 ${activeTab === 'history' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="history" size="20"></i><span className="text-[7px] font-bold uppercase">Nhật ký</span></button>
+                        <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-pink-400' : 'text-white/20'}`}><i data-lucide="settings" size="20"></i><span className="text-[7px] font-bold uppercase">Cài đặt</span></button>
+                    </nav>
+
+                    <main className="max-w-xl mx-auto p-6 pt-10">
+                        <header className="mb-8 flex justify-between items-start">
+                            <div>
+                                <h1 className="text-3xl font-light tracking-tighter">Diệp Thảo <span className="italic font-serif text-pink-300">PMU</span></h1>
+                                <p className="text-[8px] font-bold text-white/20 uppercase tracking-[0.4em] mt-1 italic">PHUN XĂM CHUYÊN NGHIỆP</p>
+                            </div>
+                            {isAdmin && (
+                                <div className="bg-white/5 border border-white/10 p-3 rounded-2xl text-right">
+                                    <div className="flex items-center gap-2 justify-end">
+                                        <p className="text-[7px] font-bold text-pink-400 uppercase">Doanh thu T{selectedMonth+1}</p>
+                                        <button onClick={() => setShowRevenue(!showRevenue)}>{showRevenue ? <i data-lucide="eye-off" size="12"></i> : <i data-lucide="eye" size="12"></i>}</button>
+                                    </div>
+                                    <p className="text-sm font-bold font-mono">{showRevenue ? `${totalRevenue.toLocaleString()}đ` : '********'}</p>
+                                </div>
+                            )}
+                        </header>
+
+                        {activeTab === 'customers' && (
+                            <div className="space-y-6 animate-in">
+                                <div className="bg-white/[0.03] border border-white/5 rounded-2xl flex items-center px-4 py-3">
+                                    <i data-lucide="search" size="16" class="text-white/10 mr-3"></i>
+                                    <input type="text" placeholder="Tìm tên khách hàng..." className="bg-transparent text-xs outline-none w-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                </div>
+                                <div className="flex gap-2 h-12">
+                                    <div className="flex-1 flex items-center justify-between bg-white/[0.03] border border-white/5 rounded-2xl px-2">
+                                        <button onClick={() => setSelectedMonth(m => m === 0 ? 11 : m - 1)}><i data-lucide="chevron-left" size="16"></i></button>
+                                        <span className="text-[10px] font-black uppercase">Tháng {selectedMonth+1}</span>
+                                        <button onClick={() => setSelectedMonth(m => m === 11 ? 0 : m + 1)}><i data-lucide="chevron-right" size="16"></i></button>
+                                    </div>
+                                    <div className="flex-1 flex items-center justify-between bg-white/[0.03] border border-white/5 rounded-2xl px-2 text-[10px] font-black">
+                                        <button onClick={() => setSelectedYear(y => y-1)}><i data-lucide="chevron-left" size="16"></i></button>
+                                        {selectedYear}
+                                        <button onClick={() => setSelectedYear(y => y+1)}><i data-lucide="chevron-right" size="16"></i></button>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-6">
+                                    {monthlyCustomers.length === 0 ? <p className="text-center py-20 text-white/10 text-[10px] uppercase font-bold tracking-widest">Trống</p> : 
+                                        monthlyCustomers.map(c => (
+                                            <div key={c.id} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-6 backdrop-blur-sm">
+                                                <div className="flex justify-between mb-4">
+                                                    <div className="flex gap-4 items-center">
+                                                        <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-300 font-serif text-xl border border-pink-500/20">{c.name.charAt(0).toUpperCase()}</div>
+                                                        <div>
+                                                            <h3 className="text-sm font-bold uppercase">{c.name}</h3>
+                                                            <div className="text-[7px] font-bold text-pink-400/60 uppercase">{c.service} • {c.date}</div>
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => { setEditingCustomer(c); setFormData(c); setIsModalOpen(true); }} className="p-2.5 bg-white/5 rounded-xl"><i data-lucide="edit-3" size="16"></i></button>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2 mb-4">
+                                                    {['imgBefore', 'imgAfter', 'imgHealed'].map((k, i) => (
+                                                        <div key={i} className="aspect-[3/4] bg-white/[0.02] rounded-xl overflow-hidden border border-white/5 cursor-pointer" onClick={() => c[k] && setViewingImage(c[k])}>
+                                                            {c[k] ? <img src={c[k]} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center opacity-5 text-[6px] uppercase font-black pt-4"><i data-lucide="image" size="14"></i>{i===0?'Trước':i===1?'Sau':'Lành'}</div>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-white/20 pt-4 border-t border-white/5">
+                                                    <span>Làm bởi: <span className="text-white/60">{c.technician}</span></span>
+                                                    {isAdmin && <span>{c.price.toLocaleString()}đ</span>}
+                                                </div>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'reminders' && (
+                            <div className="space-y-6 animate-in">
+                                <h2 className="text-lg font-light tracking-tight flex items-center gap-3"><i data-lucide="bell" class="text-pink-500"></i> NHẮC LỊCH DẶM</h2>
+                                <div className="space-y-3">
+                                    {reminderList.length === 0 ? <p className="text-center py-20 opacity-20 text-[10px] uppercase font-black">Hôm nay không có lịch</p> : 
+                                        reminderList.map(c => (
+                                            <div key={c.id} className="bg-white/[0.03] p-5 rounded-3xl border border-white/5 flex items-center justify-between">
+                                                <div>
+                                                    <h4 className="text-[11px] font-bold uppercase">{c.name}</h4>
+                                                    <p className="text-[8px] text-white/30 uppercase mt-0.5">{c.service} • {c.date}</p>
+                                                </div>
+                                                <button className="bg-white text-black px-4 py-2 rounded-xl text-[8px] font-black uppercase">Nhắc ngay</button>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'history' && (
+                            <div className="space-y-4 animate-in">
+                                {activities.map(log => (
+                                    <div key={log.id} className="bg-white/[0.01] border border-white/5 p-4 rounded-2xl">
+                                        <p className="text-[10px] font-bold uppercase text-white/70">{log.action}: <span className="text-pink-400">{log.details}</span></p>
+                                        <p className="text-[8px] text-white/10 mt-1 uppercase italic">{new Date(log.timestamp).toLocaleString()}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </main>
+
+                    {isModalOpen && (
+                        <div className="fixed inset-0 bg-black/98 z-[100] flex items-center justify-center p-4 backdrop-blur-3xl animate-in">
+                            <div className="bg-[#0a0a0a] w-full max-w-lg rounded-[3rem] p-8 border border-white/5 max-h-[92vh] overflow-y-auto no-scrollbar relative">
+                                <button onClick={() => setIsModalOpen(false)} className="absolute top-8 right-8 text-white/20"><i data-lucide="x" size="24"></i></button>
+                                <h2 className="text-center mb-8 font-light italic uppercase tracking-widest text-pink-300">{editingCustomer ? 'Cập nhật' : 'Khách hàng mới'}</h2>
+                                <form onSubmit={handleSaveCustomer} className="space-y-6">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {['imgBefore', 'imgAfter', 'imgHealed'].map(f => (
+                                            <label key={f} className="aspect-[3/4] rounded-2xl border border-white/5 bg-white/5 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative">
+                                                {formData[f] ? <img src={formData[f]} className="w-full h-full object-cover" /> : <><i data-lucide="camera" class="opacity-10 mb-1"></i><span className="text-[6px] font-black uppercase opacity-20">{f === 'imgBefore' ? 'Trước' : f === 'imgAfter' ? 'Sau' : 'Lành'}</span></>}
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                                                    const reader = new FileReader();
+                                                    reader.onload = () => setFormData({...formData, [f]: reader.result});
+                                                    if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+                                                }} />
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="space-y-4">
+                                        <input required className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-xs font-bold outline-none" placeholder="Tên khách hàng..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {['Diệp Thảo', 'Chuyên Viên'].map(t => (
+                                                <button key={t} type="button" onClick={() => setFormData({...formData, technician: t})} className={`p-4 rounded-2xl text-[9px] font-black uppercase border ${formData.technician === t ? 'bg-pink-500 border-pink-500' : 'bg-white/5 border-white/5 text-white/20'}`}>{t}</button>
+                                            ))}
+                                        </div>
+                                        <select required className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-bold text-white/50" value={formData.service} onChange={e => setFormData({...formData, service: e.target.value})}>
+                                            <option value="">-- DỊCH VỤ --</option>
+                                            <option value="Chân mày Shading">Chân mày Shading</option>
+                                            <option value="Chân mày Hairstrokes">Chân mày Hairstrokes</option>
+                                            <option value="Phun môi Collagen">Phun môi Collagen</option>
+                                            <option value="Laser Pico xóa xăm">Laser Pico xóa xăm</option>
+                                            <option value="Hút dung dịch dung hòa">Hút dung dịch dung hòa</option>
+                                        </select>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <input type="date" className="p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-bold" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                                            <input type="number" className="p-4 bg-pink-500/10 border border-pink-500/20 rounded-2xl text-[10px] font-bold" placeholder="Giá tiền" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                                        </div>
+                                        <textarea className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl text-[10px]" rows="2" placeholder="Ghi chú (Mã mực, công thức...)" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} />
+                                    </div>
+                                    <button className="w-full bg-white text-black py-5 rounded-[2.5rem] text-[10px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-2"><i data-lucide="save" size="16"></i> LƯU HỒ SƠ</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {viewingImage && (
+                        <div className="fixed inset-0 bg-black/95 z-[110] flex flex-col items-center justify-center p-6" onClick={() => setViewingImage(null)}>
+                            <div className="absolute top-10 right-10 text-white/50"><i data-lucide="x" size="32"></i></div>
+                            <img src={viewingImage} className="max-w-full max-h-[80vh] rounded-3xl object-contain shadow-2xl" />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
